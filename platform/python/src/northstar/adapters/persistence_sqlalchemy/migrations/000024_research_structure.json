@@ -1,0 +1,32 @@
+{
+  "migration_id": "northstar.research:000024",
+  "module_id": "northstar.research",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.ai:000023"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policies (and disables FORCE/RLS) on every new northstar_research structure table, then drops review_event, document_review, document_simulation_link, document_block, project_membership, research_method, hypothesis and research_question. document_review/review_event hold org_research_confidential peer-review state and audit evidence, so on a shared environment export the schema first (uninstall policy export_then_delete) and restore from the pre-migration backup rather than dropping in place; the base research tables from 000010 are untouched.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 5
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000023 (northstar.ai:000023) has been applied",
+      "the northstar_research schema exists (migration 000010 applied)"
+    ],
+    "postchecks": [
+      "northstar_research has research_question, hypothesis, research_method, project_membership, document_block, document_simulation_link, document_review and review_event tables",
+      "row-level security is enabled and forced on every new northstar_research table with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "GATE-RESEARCH-GA structure closers: research questions/hypotheses/methods/roles + document figure/table blocks, simulation link and the peer-review journey"
+}

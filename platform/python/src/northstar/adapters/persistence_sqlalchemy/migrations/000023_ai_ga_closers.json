@@ -1,0 +1,33 @@
+{
+  "migration_id": "northstar.ai:000023",
+  "module_id": "northstar.ai",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.identity:000022"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policies (and disables FORCE/RLS) on the northstar_ai ai_budget and ai_cost_ledger tables, drops both tables, then drops the additive nullable ai_memory.superseded_by and ai_memory.supersedes columns. ai_budget holds only tenant budget configuration and ai_cost_ledger holds derived cost provenance, so both are safe to drop; the ai_memory column drop is additive-reverse and loses only correction linkage, so on a shared environment export ai_memory first (uninstall policy export_then_delete) and restore from the pre-migration backup rather than dropping in place.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 5
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000022 (northstar.identity:000022) has been applied",
+      "the northstar_ai schema with ai_memory exists (migration 000009 applied)"
+    ],
+    "postchecks": [
+      "ai_memory has nullable supersedes and superseded_by columns for audited memory corrections",
+      "northstar_ai schema has the ai_budget and ai_cost_ledger tables",
+      "row-level security is enabled and forced on ai_budget and ai_cost_ledger with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "GATE-AI-GA closers: multi-scope AI cost budgets + audited memory correction/export/reset"
+}

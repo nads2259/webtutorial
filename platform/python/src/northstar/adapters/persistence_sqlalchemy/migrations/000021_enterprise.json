@@ -1,0 +1,31 @@
+{
+  "migration_id": "northstar.enterprise:000021",
+  "module_id": "northstar.enterprise",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.governance:000020"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policies (and disables FORCE/RLS) on the northstar_enterprise.enterprise_federation_mapping and enterprise_provisioning_record tables, then drops both tables and the northstar_enterprise schema (CASCADE); on a shared environment restore from the pre-migration backup instead. The schema holds only enterprise federation-mapping linkage records and SCIM provisioning-record metadata (the subjects/sessions themselves live in the identity schema and are untouched), so a rollback affects no other module's data.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 10
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000020 (northstar.governance:000020) has been applied"
+    ],
+    "postchecks": [
+      "northstar_enterprise schema with the enterprise_federation_mapping and enterprise_provisioning_record tables exists",
+      "row-level security is enabled and forced on every tenant-scoped enterprise table with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase enterprise-hardening baseline (GATE-ENTERPRISE)"
+}

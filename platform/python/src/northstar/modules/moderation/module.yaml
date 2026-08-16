@@ -1,0 +1,47 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.moderation
+name: Northstar Moderation
+version: 0.3.0
+description: >-
+  A deterministic moderation case lifecycle over reportable content (annotations/comments,
+  FR-ANN-007, EVAL-MOD-001). A CASE moves through reported -> triaged/assigned -> decided
+  (uphold|remove|hide|warn|dismiss) -> action-applied -> optionally appealed -> appeal-resolved;
+  illegal transitions are rejected by a pure state machine. Report intake references reportable
+  content through a port (never its tables, LAW-13), captures reporter/target/reason, and coalesces
+  duplicate reports on the same target into one case. Every transition is authorized deny-by-default
+  (only a moderator/assignee may triage/decide; only the affected author or delegate may appeal) and
+  audited with actor, decision and rationale (LAW-14). Enforcement is REVERSIBLE: an upheld
+  removal/hide is restored on a granted appeal, with an auditable trail. The module owns the
+  northstar_moderation schema (forced tenant RLS); capabilities run through the kernel buses.
+owner: Governance Studio Council
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+dependencies:
+  - module_id: northstar.annotation
+    version_range: ">=0.3.0 <1.0.0"
+capabilities:
+  - moderation.report.submit
+  - moderation.case.triage
+  - moderation.case.assign
+  - moderation.case.decide
+  - moderation.action.apply
+  - moderation.appeal.submit
+  - moderation.appeal.resolve
+  - moderation.case.get
+data_ownership:
+  postgres_schemas:
+    - northstar_moderation
+  classifications:
+    - public
+    - internal
+    - confidential
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: export_then_delete

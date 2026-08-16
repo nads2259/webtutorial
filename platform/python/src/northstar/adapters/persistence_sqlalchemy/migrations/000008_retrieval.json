@@ -1,0 +1,33 @@
+{
+  "migration_id": "northstar.retrieval:000008",
+  "module_id": "northstar.retrieval",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.annotation:000007"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policies (and disables FORCE/RLS) on the northstar_retrieval knowledge_chunk and chunk_embedding tables, then drops chunk_embedding, knowledge_chunk, embedding_profile and the northstar_retrieval schema (CASCADE). All three tables are DERIVED projections over published knowledge content, so no authoritative data is lost; on a shared environment restore from the pre-migration backup and rebuild projections from published revisions instead.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 10
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "the pgvector extension is installable (CREATE EXTENSION vector)",
+      "migration 000007 (northstar.annotation:000007) has been applied"
+    ],
+    "postchecks": [
+      "northstar_retrieval schema with embedding_profile, knowledge_chunk and chunk_embedding tables exists",
+      "knowledge_chunk has a GIN index on its tsvector column and chunk_embedding has a pgvector vector(256) column",
+      "row-level security is enabled and forced on knowledge_chunk and chunk_embedding with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase 3 hybrid retrieval (FTS + pgvector exact) baseline"
+}

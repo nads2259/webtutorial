@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# One-touch entry point (spec/reference/bootstrap-contract.md). Runs the CLI from a clean
+# checkout without installation by putting the platform source on PYTHONPATH.
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd)"
+export PYTHONPATH="$here/platform/python/src${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m northstar.cli "$@"

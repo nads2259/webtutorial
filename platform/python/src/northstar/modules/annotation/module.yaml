@@ -1,0 +1,44 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.annotation
+name: Northstar Annotation
+version: 0.3.0
+description: >-
+  Selector-based annotations, comments and notes over versioned knowledge content (FR-ANN-001..006).
+  W3C-inspired selectors anchor a stable block id + source revision PLUS text quote/position,
+  code-range and media-fragment context (LAW-06). Every annotation RETAINS its original revision
+  target forever (FR-ANN-003); a deterministic ordered-evidence remapper (block identity -> ancestry
+  -> fingerprint -> exact quote -> prefix/suffix -> normalized position) routes ambiguous/orphaned
+  targets to review rather than silently moving them (FR-ANN-004). Visibility (private/team/workspace/
+  public/editorial/moderation) is enforced by the policy engine and a server-side projection
+  (FR-ANN-005); threads support replies with moderation hooks for shared annotations (FR-ANN-006).
+  Capabilities run through the kernel buses (policy-checked, audited).
+owner: Content Architecture Council
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+dependencies:
+  - module_id: northstar.knowledge
+    version_range: ">=0.3.0 <1.0.0"
+capabilities:
+  - annotation.annotation.create
+  - annotation.annotation.reply
+  - annotation.annotation.set-visibility
+  - annotation.annotation.moderate
+  - annotation.annotation.remap
+  - annotation.annotation.list
+data_ownership:
+  postgres_schemas:
+    - northstar_annotation
+  classifications:
+    - public
+    - internal
+    - confidential
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: export_then_delete

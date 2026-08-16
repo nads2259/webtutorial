@@ -1,0 +1,31 @@
+{
+  "migration_id": "northstar.research:000010",
+  "module_id": "northstar.research",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.ai:000009"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policies (and disables FORCE/RLS) on every northstar_research table, then drops experiment_ref, dataset_ref, claim, evidence_record, research_revision, research_document, research_project, workspace and the northstar_research schema (CASCADE). research_revision holds immutable published revisions and claims/evidence hold org_research_confidential data, so on a shared environment export the schema first (uninstall policy export_then_delete) and restore from the pre-migration backup rather than dropping in place.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 5
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000009 (northstar.ai:000009) has been applied"
+    ],
+    "postchecks": [
+      "northstar_research schema with workspace, research_project, research_document, research_revision, evidence_record, claim, dataset_ref and experiment_ref tables exists",
+      "row-level security is enabled and forced on every northstar_research table with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase 3 research module (workspaces, evidence-backed claims, AI-assisted drafting, exports) baseline"
+}

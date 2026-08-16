@@ -1,0 +1,31 @@
+{
+  "migration_id": "northstar.governance:000020",
+  "module_id": "northstar.governance",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.moderation:000019"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policies (and disables FORCE/RLS) on the northstar_governance.governance_decision and governance_exception tables, then drops both tables and the northstar_governance schema (CASCADE); on a shared environment restore from the pre-migration backup instead. The schema holds only immutable governance decision records and time-bounded control-exception metadata, so a rollback affects no other module's data.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 10
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000019 (northstar.moderation:000019) has been applied"
+    ],
+    "postchecks": [
+      "northstar_governance schema with the governance_decision and governance_exception tables exists",
+      "row-level security is enabled and forced on every tenant-scoped governance table with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase governance-hardening baseline (GATE-GOVERNANCE)"
+}

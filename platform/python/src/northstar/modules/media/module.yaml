@@ -1,0 +1,45 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.media
+name: Northstar Media
+version: 0.3.0
+description: >-
+  Validated media capability for video/audio/image assets (FR-CNT-009/010, NFR-A11Y-003,
+  NFR-SEC-004). Ingestion writes ONLY through the shared H02 ValidatingObjectStorage/UploadValidator
+  seam (content-based MIME sniffing, size + decompression-bomb caps, active-content refusal,
+  quarantine scan) — no unvalidated media write path; a mismatched/malicious asset is refused
+  (EVAL-MED-001, reuses EVAL-SEC-004). Publishing enforces a HARD accessibility gate (EVAL-MED-002):
+  a video/audio asset REQUIRES a transcript AND captions; an image REQUIRES alt text OR an explicit
+  decorative flag; a publish without the required alternative is a typed rejection. Time-based media
+  exposes timecode-addressable caption cues and transcript segments (time-selectors) for annotation
+  and citation (FR-CNT-010). Capabilities run through the kernel buses (policy-checked, audited); the
+  module owns the northstar_media schema (forced tenant RLS).
+owner: Content Architecture Council
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+capabilities:
+  - media.asset.upload
+  - media.transcript.attach
+  - media.captions.attach
+  - media.alt.attach
+  - media.asset.publish
+  - media.asset.get
+  - media.timeselector.resolve
+data_ownership:
+  postgres_schemas:
+    - northstar_media
+  object_prefixes:
+    - media/
+  classifications:
+    - public
+    - internal
+    - confidential
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: export_then_delete

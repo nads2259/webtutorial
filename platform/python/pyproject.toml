@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "northstar"
+version = "0.3.0"
+description = "Northstar Knowledge, Learning, Research and Simulation Framework (platform)"
+requires-python = ">=3.13"
+readme = "../../README.md"
+# License is provisional (Apache-2.0) pending ADR-D06 / OQ-01.
+license = "Apache-2.0"
+# HTTP adapter/process stack (IMPL-006, spec-declared). Kernel imports none of these; they live
+# only under northstar.adapters.http_fastapi and northstar.processes (rule 10).
+dependencies = [
+  "fastapi>=0.141,<1.0",
+  "uvicorn[standard]>=0.52,<1.0",
+  # OpenTelemetry tracing (ADR-015, NFR-OPS-001). Imported only under
+  # northstar.adapters.telemetry_otel and northstar.processes (rule 10); the kernel imports none.
+  "opentelemetry-api>=1.44,<2.0",
+  "opentelemetry-sdk>=1.44,<2.0",
+  "opentelemetry-instrumentation-fastapi>=0.48b0,<1.0",
+  # WebAuthn/passkey attestation + assertion verification (FR-IDN-003, docs/07 §3). Imported only
+  # under northstar.modules.identity.adapters.webauthn behind WebAuthnVerifierPort (rule 10); the
+  # kernel and identity domain import none of it.
+  "webauthn>=3.0,<4.0",
+  # AES-256-GCM authenticated encryption at rest (NFR-SEC-001, rule 50). Imported only under
+  # northstar.adapters.crypto_aesgcm behind the kernel EncryptionPort (rule 10); the kernel and
+  # every domain layer import none of it.
+  "cryptography>=43,<51",
+]
+
+[project.scripts]
+northstar = "northstar.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/northstar"]

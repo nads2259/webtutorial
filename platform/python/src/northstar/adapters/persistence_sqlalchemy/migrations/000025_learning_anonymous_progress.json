@@ -1,0 +1,32 @@
+{
+  "migration_id": "northstar.learning:000025",
+  "module_id": "northstar.learning",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.research:000024"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policy (and disables FORCE/RLS) on northstar_learning.anonymous_progress, then drops the anonymous_progress table. The table holds anonymous, device/session-scoped learning progress that is merged into the authenticated progress table on sign-in; on a shared environment export the schema first (uninstall policy export_then_delete) and restore from the pre-migration backup rather than dropping in place; the authenticated progress table and all other 000016 learning tables are untouched.",
+  "risk": "medium",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 3
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000024 (northstar.research:000024) has been applied",
+      "the northstar_learning schema exists (migration 000016 applied)"
+    ],
+    "postchecks": [
+      "northstar_learning has the anonymous_progress table",
+      "row-level security is enabled and forced on northstar_learning.anonymous_progress with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "GATE-LEARNING-GA UX-010 closer: anonymous device/session progress merged into the authenticated account on sign-in (furthest-wins, idempotent, tenant-scoped)"
+}

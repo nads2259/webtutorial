@@ -1,0 +1,43 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.commerce
+name: Northstar Commerce
+version: 0.3.0
+description: >-
+  Commerce: products/offers that compose free/paid/tier access over the EXISTING entitlement engine
+  (docs/29, FR-COM-001..005). Offers validate against commerce-offer.schema.json and purchasing grants
+  entitlements THROUGH the entitlement engine without branching on plan/payment-provider names
+  (ARCH-019). Payment provider callbacks are SIGNATURE-VERIFIED behind a WebhookVerifierPort: a
+  forged/unsigned/tampered/replayed callback is rejected fail-closed and never mutates entitlements,
+  while a correctly-signed callback is processed idempotently (single effect per event id,
+  FR-COM-003). Refunds revoke the granted entitlement idempotently and auditably (FR-COM-004).
+  Advertising/sponsorship surfaces are always flagged disclosed (FR-COM-005). Capabilities run through
+  the kernel command bus (policy-checked, audited).
+owner: Commerce Council
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+dependencies:
+  - module_id: northstar.entitlement
+    version_range: ">=0.3.0 <1.0.0"
+capabilities:
+  - commerce.offer.publish
+  - commerce.purchase
+  - commerce.payment.callback
+  - commerce.refund.issue
+  - commerce.ad.disclose
+produced_events: []
+data_ownership:
+  postgres_schemas:
+    - northstar_commerce
+  classifications:
+    - internal
+    - confidential
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: export_then_delete

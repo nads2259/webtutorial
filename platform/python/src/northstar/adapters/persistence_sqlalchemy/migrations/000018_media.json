@@ -1,0 +1,31 @@
+{
+  "migration_id": "northstar.media:000018",
+  "module_id": "northstar.media",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.privacy:000017"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policy (and disables FORCE/RLS) on the northstar_media.media_asset table, then drops the media_asset table and the northstar_media schema (CASCADE); on a shared environment restore from the pre-migration backup instead. No media bytes live in this schema (only validated metadata + accessible-alternative records), so the object store is unaffected by a rollback.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 10
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000017 (northstar.privacy:000017) has been applied"
+    ],
+    "postchecks": [
+      "northstar_media schema with the media_asset table exists",
+      "row-level security is enabled and forced on every tenant-scoped media table with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase 3 media capability baseline (GATE-MEDIA-GA)"
+}

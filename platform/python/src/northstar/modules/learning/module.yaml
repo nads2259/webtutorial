@@ -1,0 +1,60 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.learning
+name: Northstar Learning & Assessment
+version: 0.3.0
+description: >-
+  Learning & assessment — the reference product core (JRN-001, FR-LRN-001..007). Owns the learning
+  hierarchy (domain -> path -> course -> section/block) composing PUBLISHED knowledge revisions;
+  progress stored INDEPENDENTLY from analytics with a stable resume position; a private personal
+  overlay (bookmark/note/highlight); versioned assessment items with deterministic scoring and an
+  integrity policy (a version used in a scored attempt is IMMUTABLE); completion & credentials from
+  EXPLICIT rules over auditable evidence (not analytics), independently verifiable; explainable
+  consent/entitlement-aware recommendations that never treat inferred difficulty as authoritative;
+  a transparent inspect/correct/reset inferred profile; and an AI tutor that REUSES the single
+  governed ai.answer pipeline as a scoped actor (multilingual + a deterministic pedagogical rubric;
+  never leaks an answer key). Capabilities run through the kernel buses (policy-checked, audited).
+owner: Learning Council
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+dependencies:
+  - module_id: northstar.knowledge
+    version_range: ">=0.3.0 <1.0.0"
+  - module_id: northstar.ai
+    version_range: ">=0.3.0 <1.0.0"
+  - module_id: northstar.entitlement
+    version_range: ">=0.3.0 <1.0.0"
+    optional: true
+capabilities:
+  - learning.course.compose
+  - learning.course.publish
+  - learning.progress.record
+  - learning.progress.record.anonymous
+  - learning.progress.merge
+  - learning.progress.resume
+  - learning.overlay.add
+  - learning.assessment.item.publish
+  - learning.assessment.attempt.submit
+  - learning.credential.evaluate
+  - learning.recommend.next
+  - learning.profile.inspect
+  - learning.profile.correct
+  - learning.profile.reset
+  - learning.tutor.ask
+produced_events: []
+data_ownership:
+  postgres_schemas:
+    - northstar_learning
+  classifications:
+    - public
+    - internal
+    - confidential
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: export_then_delete

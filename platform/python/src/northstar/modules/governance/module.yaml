@@ -1,0 +1,41 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.governance
+name: Northstar Governance
+version: 0.3.0
+description: >-
+  Immutable, traceable governance decision records + a time-bounded control-exception engine that
+  closes GATE-GOVERNANCE (FR-GOV-001/002/003, EVAL-GOV-001/002). A DECISION RECORD carries an
+  explicit decider, rationale, timestamp and links to affected controls/requirements/gates; it is
+  immutable once recorded and a correction creates a NEW record linked to the prior via supersede
+  (never mutates it, LAW-07). A CONTROL EXCEPTION is scoped to a control/gate + subject, REQUIRES an
+  approver and an explicit expiry, and AUTO-EXPIRES under an injectable clock: is_active(now) is
+  False once now > expiry, so an expired/revoked exception is never honored. The pure
+  no_expired_exception(control, now, exceptions) returns True only for a non-expired approved
+  exception — matching each gate's machine_check. Granting/revoking is deny-by-default (approver
+  only). Owns the northstar_governance schema (forced tenant RLS); exposed only via capabilities.
+owner: Governance Office
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+capabilities:
+  - governance.decision.record
+  - governance.decision.supersede
+  - governance.exception.grant
+  - governance.exception.revoke
+  - governance.exception.evaluate
+data_ownership:
+  postgres_schemas:
+    - northstar_governance
+  classifications:
+    - public
+    - internal
+    - confidential
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: export_then_delete

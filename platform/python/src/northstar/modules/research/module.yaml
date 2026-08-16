@@ -1,0 +1,60 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.research
+name: Northstar Research and Reproducibility
+version: 0.3.0
+description: >-
+  Research workspaces/projects scoped to an organization/tenant with RLS-enforced isolation
+  (FR-RSH-001); research documents built on the shared knowledge typed-block tree with immutable
+  published revisions (FR-RSH-002/006); evidence records carrying provenance + stable version
+  identity and claims that MUST link to >=1 evidence record — a zero-evidence claim is rejected by
+  the domain (FR-RSH-003); dataset/experiment references recording ownership, license,
+  classification, integrity hash, retention and version (FR-RSH-004); AI-assisted research that
+  REUSES the AI module's ai.answer so produced claims preserve verified source citations and no
+  uncited/fabricated claim can be persisted (FR-RSH-005, EVAL-RSH-005/GATE-AI-GA); and
+  structure+citation-preserving deterministic exports (FR-RSH-006).
+owner: Research Council
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+dependencies:
+  - module_id: northstar.knowledge
+    version_range: ">=0.3.0 <1.0.0"
+  - module_id: northstar.ai
+    version_range: ">=0.3.0 <1.0.0"
+capabilities:
+  - research.workspace.create
+  - research.project.create
+  - research.document.author
+  - research.document.publish
+  - research.evidence.register
+  - research.claim.assert
+  - research.dataset.register
+  - research.experiment.register
+  - research.document.ai-draft
+  - research.document.export
+  - research.reproducibility.package
+  - research.project.update
+  - research.project.add-question
+  - research.project.add-hypothesis
+  - research.project.add-method
+  - research.project.assign-role
+  - research.document.add-block
+  - research.document.link-simulation
+  - research.document.open-review
+  - research.document.review-transition
+data_ownership:
+  postgres_schemas:
+    - northstar_research
+  classifications:
+    - public
+    - internal
+    - confidential
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: export_then_delete

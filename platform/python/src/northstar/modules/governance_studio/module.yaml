@@ -1,0 +1,29 @@
+manifest_version: "1.0"
+module_id: northstar.governance_studio
+name: Northstar Governance Studio
+version: 0.3.0
+description: >-
+  Module-composed control plane: a contribution registry, role/scope-projected composition and a
+  composed Studio API. Every action routes through a registered capability on the command/query bus;
+  the Studio writes no domain tables directly (LAW-05, ARCH-005/ARCH-022).
+owner: Governance Studio Council
+maturity: beta
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+dependencies:
+  - module_id: northstar.organization
+    version_range: ">=0.3.0 <1.0.0"
+  - module_id: northstar.identity
+    version_range: ">=0.3.0 <1.0.0"
+capabilities:
+  - studio.compose
+  - studio.audit.explore
+data_ownership:
+  postgres_schemas: []
+  classifications: [internal]
+lifecycle:
+  migrations: false
+  health_checks: [contribution_compatibility]
+  uninstall_policy: not_applicable

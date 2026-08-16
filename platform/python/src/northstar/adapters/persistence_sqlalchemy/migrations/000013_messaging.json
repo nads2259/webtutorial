@@ -1,0 +1,31 @@
+{
+  "migration_id": "northstar.messaging:000013",
+  "module_id": "northstar.messaging",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.extension:000012"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policies (and disables FORCE/RLS) on every northstar_messaging table, then drops delivery_receipt, suppression_entry, consent_record, campaign and template_version and the northstar_messaging schema (CASCADE). suppression_entry and consent_record record a recipient's opt-out/consent (a compliance-relevant marketing block), and delivery_receipt is the idempotency ledger that prevents duplicate provider submissions, so on a shared environment export the schema first (uninstall policy export_then_delete) and restore from the pre-migration backup rather than dropping in place. Published template versions are immutable, so this migration never mutates data in place.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 5
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000012 (northstar.extension:000012) has been applied"
+    ],
+    "postchecks": [
+      "northstar_messaging schema with template_version, campaign, consent_record, suppression_entry and delivery_receipt tables exists",
+      "row-level security is enabled and forced on every northstar_messaging table with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase 6 messaging module (transactional/marketing classification, versioned immutable templates, approved-attribute segmentation, recipient-timezone scheduling, always-honoured consent/suppression, idempotent provider submission, privacy-safe tracking) baseline"
+}

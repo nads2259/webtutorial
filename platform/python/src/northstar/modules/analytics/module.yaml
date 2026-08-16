@@ -1,0 +1,42 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.analytics
+name: Northstar Analytics
+version: 0.3.0
+description: >-
+  First-party product/learning analytics as the AUTHORITATIVE source (docs/17, FR-ANL-001..007): a
+  purpose-governed event catalog where every event type declares a purpose and validates against
+  analytics-event-definition.schema.json (FR-ANL-003); a validating ingestion pipeline that rejects
+  malformed/unknown/purpose-less events (FR-ANL-007); first-party events persisted as the
+  authoritative analytics source with complete reporting and NO external dependency (FR-ANL-001/002);
+  consent-aware identity stitching that only links identities with the required consent (FR-ANL-004);
+  content-intelligence reach reporting (FR-ANL-005); and an OPTIONAL GA4 adapter behind a port whose
+  figures are labelled non-authoritative and carry source freshness + mapping, never returned as
+  authoritative learner state (FR-ANL-006). Capabilities run through the kernel buses (policy-checked,
+  audited).
+owner: Analytics Council
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+dependencies: []
+capabilities:
+  - analytics.catalog.register
+  - analytics.event.ingest
+  - analytics.identity.stitch
+  - analytics.report.reach
+  - analytics.ga4.import
+produced_events: []
+data_ownership:
+  postgres_schemas:
+    - northstar_analytics
+  classifications:
+    - internal
+    - confidential
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: export_then_delete

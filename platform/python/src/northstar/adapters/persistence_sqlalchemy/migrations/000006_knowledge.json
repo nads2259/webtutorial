@@ -1,0 +1,31 @@
+{
+  "migration_id": "northstar.knowledge:000006",
+  "module_id": "northstar.knowledge",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.identity:000005"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policies (and disables FORCE/RLS) on every northstar_knowledge tenant table, then drops the taxonomy_assignment, publication, block, revision, draft and knowledge_object tables and the northstar_knowledge schema (CASCADE); on a shared environment restore from the pre-migration backup instead. Published revisions are immutable, so no data is ever mutated in place by this migration.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 10
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000005 (northstar.identity:000005) has been applied"
+    ],
+    "postchecks": [
+      "northstar_knowledge schema with knowledge_object, draft, revision, block, publication and taxonomy_assignment tables exists",
+      "row-level security is enabled and forced on every tenant-scoped knowledge table with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase 3 knowledge documents and publication baseline"
+}

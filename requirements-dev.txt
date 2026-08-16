@@ -1,0 +1,15 @@
+# Northstar dev/CI toolchain (not framework runtime deps — those arrive per module).
+ruff>=0.6
+mypy>=1.11
+pytest>=8
+pytest-cov>=5
+pre-commit>=3.8
+pyyaml>=6
+jsonschema>=4.23
+# HTTP adapter test client (TestClient transport); runtime deps live in platform pyproject.
+httpx>=0.28
+# OpenTelemetry tracing (ADR-015, NFR-OPS-001) — runtime deps also declared in platform
+# pyproject; pinned here so the dev/CI venv installs them for the bootstrap/OTel tests.
+opentelemetry-api>=1.44,<2.0
+opentelemetry-sdk>=1.44,<2.0
+opentelemetry-instrumentation-fastapi>=0.48b0,<1.0

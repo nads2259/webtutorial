@@ -1,0 +1,31 @@
+{
+  "migration_id": "northstar.privacy:000017",
+  "module_id": "northstar.privacy",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.learning:000016"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policies (and disables FORCE/RLS) on every northstar_privacy table, then drops rights_request, consent_record, data_field and the northstar_privacy schema (CASCADE). consent_record holds the immutable, auditable consent history and rights_request holds data-subject-rights evidence, so on a shared environment export the schema first (uninstall policy export_then_delete) and restore from the pre-migration backup rather than dropping in place.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 5
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000016 (northstar.learning:000016) has been applied"
+    ],
+    "postchecks": [
+      "northstar_privacy schema with data_field, consent_record and rights_request tables exists",
+      "row-level security is enabled and forced on every northstar_privacy table with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase 6 privacy & legal readiness module (GATE-PRIVACY build core): a data catalog declaring purpose + lawful basis + retention per personal-data field, versioned immutable consent history, authenticated access/export/erase data-subject-rights workflows, deletion propagation across every registered store until deletion_residue == 0, and clock-controlled retention purging that honors stricter data classes"
+}

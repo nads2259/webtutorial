@@ -1,0 +1,32 @@
+{
+  "migration_id": "northstar.commerce:000015",
+  "module_id": "northstar.commerce",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.analytics:000014"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policies (and disables FORCE/RLS) on every northstar_support then northstar_commerce table, then drops support_access_log, support_access_grant, support_message, support_case and the northstar_support schema (CASCADE), followed by ad_placement, entitlement_grant, refund, payment_event, purchase, offer, product and the northstar_commerce schema (CASCADE). purchase/entitlement_grant hold commercial evidence and support_case/support_message hold governed contact records, so on a shared environment export the schemas first (uninstall policy export_then_delete) and restore from the pre-migration backup rather than dropping in place.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 5
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000014 (northstar.analytics:000014) has been applied"
+    ],
+    "postchecks": [
+      "northstar_commerce schema with product, offer, purchase, payment_event, refund, entitlement_grant and ad_placement tables exists",
+      "northstar_support schema with support_case, support_message, support_access_grant and support_access_log tables exists",
+      "row-level security is enabled and forced on every northstar_commerce and northstar_support table with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase 7 commerce + support modules (offers over the existing entitlement engine, signature-verified idempotent payment callbacks, refunds, ad disclosure; validated support intake, case lifecycle, and audited time-bounded support-access grants) baseline"
+}

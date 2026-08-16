@@ -1,0 +1,32 @@
+{
+  "migration_id": "northstar.identity:000022",
+  "module_id": "northstar.identity",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.enterprise:000021"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade disables the tenant-isolation FORCE/RLS policies restored on the pre-existing northstar_identity.subject and session tables (returning them to their 000003 application-layer-scoped state), then drops the tenant-isolation policies and the impersonation_grant, break_glass_access and post_use_review tables this migration created. The new tables hold only impersonation/break-glass session-mode records; subjects, users, sessions and credentials are untouched, so a rollback affects no other module's data. On a shared environment restore from the pre-migration backup instead.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 10
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000021 (northstar.enterprise:000021) has been applied",
+      "the northstar_identity.subject and session tables exist with a tenant_scope column"
+    ],
+    "postchecks": [
+      "northstar_identity now contains the impersonation_grant, break_glass_access and post_use_review tables",
+      "row-level security is enabled and forced with a tenant-isolation policy keyed to the northstar.tenant_id GUC on every new impersonation/break-glass table AND on the pre-existing subject and session tables"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase identity-hardening GATE-SECURITY (EVAL-IDN-006/007, verify_005 identity-RLS)"
+}

@@ -1,0 +1,31 @@
+{
+  "migration_id": "northstar.kernel:000002",
+  "module_id": "northstar.kernel",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.kernel:000001"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the northstar_runtime.job and northstar_runtime.outbox_event tables and the northstar_runtime schema (CASCADE) created by this migration; on a shared environment restore from the pre-migration backup instead.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 10
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000001 (northstar.kernel:000001) has been applied"
+    ],
+    "postchecks": [
+      "northstar_runtime schema and its outbox_event and job tables exist",
+      "the outbox ready and job ready partial indexes exist"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Bootstrap baseline"
+}

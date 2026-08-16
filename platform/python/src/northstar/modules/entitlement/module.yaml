@@ -1,0 +1,31 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.entitlement
+name: Northstar Entitlement
+version: 0.3.0
+description: >-
+  Commercial/contractual entitlement grants (subject/organization scope, quota, validity, origin)
+  and entitlement decisions. Domain code asks for entitlement decisions and never branches on a
+  plan or payment-provider name (ARCH-019, FR-POL-005, docs/07 §8).
+owner: Identity and Access Council
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+dependencies: []
+capabilities:
+  - entitlement.grant.create
+  - entitlement.decision.evaluate
+data_ownership:
+  postgres_schemas:
+    - northstar_entitlement
+  classifications:
+    - internal
+    - confidential
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: export_then_delete

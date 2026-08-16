@@ -1,0 +1,33 @@
+{
+  "migration_id": "northstar.identity:000005",
+  "module_id": "northstar.identity",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.identity:000003",
+    "northstar.organization:000004"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the northstar_identity.webauthn_credential and totp_credential tables created by this migration, leaving the rest of the northstar_identity schema (subject, user_account, external_identity, session, credential) intact; on a shared environment restore from the pre-migration backup instead.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 5
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000004 (northstar.organization:000004) has been applied",
+      "the northstar_identity schema exists"
+    ],
+    "postchecks": [
+      "northstar_identity.totp_credential and northstar_identity.webauthn_credential tables exist",
+      "the uq_totp_subject unique index enforcing one TOTP credential per subject exists"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase 2 identity MFA baseline"
+}

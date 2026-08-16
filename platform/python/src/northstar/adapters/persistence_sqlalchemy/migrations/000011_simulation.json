@@ -1,0 +1,31 @@
+{
+  "migration_id": "northstar.simulation:000011",
+  "module_id": "northstar.simulation",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.research:000010"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policies (and disables FORCE/RLS) on every northstar_simulation table, then drops score, run_evidence, trust_tier, simulation_definition and the northstar_simulation schema (CASCADE). run_evidence holds immutable, tamper-evident run evidence and simulation_definition holds a restricted scoring_key, so on a shared environment export the schema first (uninstall policy export_then_delete) and restore from the pre-migration backup rather than dropping in place.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 5
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000010 (northstar.research:000010) has been applied"
+    ],
+    "postchecks": [
+      "northstar_simulation schema with simulation_definition, trust_tier, run_evidence and score tables exists",
+      "row-level security is enabled and forced on every northstar_simulation table with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase 5 simulation module (versioned definitions, signed leases, sandboxed runs, hash-chained evidence, deterministic scoring, scoped AI coaching) baseline"
+}

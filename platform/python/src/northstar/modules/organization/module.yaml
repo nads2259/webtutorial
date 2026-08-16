@@ -1,0 +1,36 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.organization
+name: Northstar Organization
+version: 0.3.0
+description: >-
+  Organizations, workspaces, teams, memberships and RBAC roles as the tenant root. Every
+  tenant-scoped record carries an explicit organization scope; capabilities run through the kernel
+  buses and authorization is deny-by-default via the layered policy engine (FR-POL-001..004,
+  FR-IDN-005, ARCH-019).
+owner: Identity and Access Council
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+dependencies: []
+capabilities:
+  - organization.organization.create
+  - organization.workspace.create
+  - organization.team.create
+  - organization.membership.add
+  - organization.role.assign
+  - organization.membership.list
+data_ownership:
+  postgres_schemas:
+    - northstar_organization
+  classifications:
+    - internal
+    - confidential
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: export_then_delete

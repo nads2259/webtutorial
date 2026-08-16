@@ -1,0 +1,32 @@
+{
+  "migration_id": "northstar.organization:000004",
+  "module_id": "northstar.organization",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.identity:000003"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the entitlement_grant table + its RLS policy and the northstar_entitlement schema, drops the tenant-isolation RLS policies (and disables FORCE/RLS) on the northstar_organization membership, team, workspace and organization tables, then drops those tables and the northstar_organization schema (CASCADE); on a shared environment restore from the pre-migration backup instead.",
+  "risk": "critical",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 10
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000003 (northstar.identity:000003) has been applied"
+    ],
+    "postchecks": [
+      "northstar_organization schema with organization, workspace, team and membership tables exists",
+      "northstar_entitlement schema with the entitlement_grant table exists",
+      "row-level security is enabled and forced on every tenant-scoped organization table with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase 2 identity/organization baseline"
+}

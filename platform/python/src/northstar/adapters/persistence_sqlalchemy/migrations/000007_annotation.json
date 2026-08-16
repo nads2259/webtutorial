@@ -1,0 +1,31 @@
+{
+  "migration_id": "northstar.annotation:000007",
+  "module_id": "northstar.annotation",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.knowledge:000006"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policies (and disables FORCE/RLS) on the northstar_annotation tenant tables, then drops the annotation_moderation and annotation tables and the northstar_annotation schema (CASCADE); on a shared environment restore from the pre-migration backup instead. Annotations retain their original revision target and are never mutated in place by this migration.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 10
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000006 (northstar.knowledge:000006) has been applied"
+    ],
+    "postchecks": [
+      "northstar_annotation schema with annotation and annotation_moderation tables exists",
+      "row-level security is enabled and forced on every tenant-scoped annotation table with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase 3 annotations, comments and notes baseline"
+}

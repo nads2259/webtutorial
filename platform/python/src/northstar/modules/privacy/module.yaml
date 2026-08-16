@@ -1,0 +1,47 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.privacy
+name: Northstar Privacy & Data-Subject Rights
+version: 0.3.0
+description: >-
+  Privacy & legal readiness — the GATE-PRIVACY build core (NFR-PRV-001..005). Owns a DATA CATALOG
+  where every registered personal-data field/event declares a purpose + lawful basis + retention
+  (missing purpose/retention rejected, EVAL-PRIV-001); VERSIONED, IMMUTABLE consent/preference
+  records (a new decision supersedes, never mutates, with an auditable history, EVAL-PRIV-002);
+  authenticated data-subject-rights workflows for access/export/erase, each requiring the subject or
+  an authorized delegate and authz-checked + audited (EVAL-PRIV-003); a DataSubjectRightsRegistry
+  where owned modules register export + erase handlers so erasure PROPAGATES across ALL registered
+  stores (DB rows, object-store blobs, search/retrieval projections, analytics, provider seams) until
+  deletion_residue == 0 (EVAL-DATA-009); and clock-controlled retention purging that honors stricter
+  data classes (NFR-PRV-005). Capabilities run through the kernel buses (policy-checked, audited).
+owner: Privacy Council
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+dependencies: []
+capabilities:
+  - privacy.catalog.register
+  - privacy.catalog.inspect
+  - privacy.consent.record
+  - privacy.consent.history
+  - privacy.rights.access
+  - privacy.rights.export
+  - privacy.rights.erase
+  - privacy.retention.sweep
+produced_events: []
+data_ownership:
+  postgres_schemas:
+    - northstar_privacy
+  classifications:
+    - public
+    - internal
+    - confidential
+    - restricted
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: export_then_delete

@@ -1,0 +1,32 @@
+{
+  "migration_id": "northstar.ai:000009",
+  "module_id": "northstar.ai",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.retrieval:000008"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policies (and disables FORCE/RLS) on the northstar_ai ai_memory and ai_trace tables, then drops ai_trace, ai_memory, prompt_package and the northstar_ai schema (CASCADE). prompt_package holds only immutable prompt configuration and ai_trace holds derived provenance; ai_memory holds user-controlled AI memory, so on a shared environment export ai_memory first (uninstall policy export_then_delete) and restore from the pre-migration backup rather than dropping in place.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 5
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000008 (northstar.retrieval:000008) has been applied"
+    ],
+    "postchecks": [
+      "northstar_ai schema with prompt_package, ai_memory and ai_trace tables exists",
+      "prompt_package has a composite primary key on (package_id, version) enforcing immutability by identity",
+      "row-level security is enabled and forced on ai_memory and ai_trace with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase 3 governed AI (gateway + RAG + tool broker) baseline"
+}

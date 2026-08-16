@@ -1,0 +1,42 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.retrieval
+name: Northstar Retrieval
+version: 0.3.0
+description: >-
+  Hybrid search over PUBLISHED knowledge: language-aware PostgreSQL FTS (tsvector) + pgvector
+  EXACT vector search fused with reciprocal-rank fusion (FR-RET-001/002/005). Embeddings are
+  versioned derived artifacts recorded with provider/model/dimensions/metric/chunker behind an
+  EmbeddingPort with a deterministic local reference adapter (FR-RET-003/008). Access control is
+  applied INSIDE the retrieval query and re-checked before any private/other-tenant passage is
+  disclosed (zero leakage, FR-RET-006); every result carries stable source/revision/block identity
+  for citation (FR-RET-007). Capabilities run through the kernel buses (policy-checked, audited).
+owner: Data Architecture Council
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+dependencies:
+  - module_id: northstar.knowledge
+    version_range: ">=0.3.0 <1.0.0"
+capabilities:
+  - retrieval.revision.index
+  - retrieval.search
+  - retrieval.embedding.rebuild
+  - retrieval.embedding.retire
+consumed_events:
+  - northstar.knowledge.document-published.v1
+data_ownership:
+  postgres_schemas:
+    - northstar_retrieval
+  classifications:
+    - public
+    - internal
+    - confidential
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: delete

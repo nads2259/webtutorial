@@ -1,0 +1,50 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.identity
+name: Northstar Identity
+version: 0.3.0
+description: >-
+  Subjects/users, OIDC/OAuth Authorization-Code + PKCE browser authentication with
+  server-managed secure sessions, real MFA (RFC 6238 TOTP + WebAuthn/passkeys) enforced as
+  step-up, session rotation/revocation, and federation/SCIM adapter ports (FR-IDN-001..006,
+  NFR-SEC-001).
+owner: Identity and Access Council
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+dependencies: []
+capabilities:
+  - identity.subject.register
+  - identity.authentication.begin
+  - identity.authentication.complete
+  - identity.session.rotate
+  - identity.session.revoke
+  - identity.session.describe
+  - identity.mfa.enroll
+  - identity.mfa.verify
+  - identity.mfa.totp.enroll
+  - identity.mfa.totp.verify
+  - identity.mfa.webauthn.register.begin
+  - identity.mfa.webauthn.register.complete
+  - identity.mfa.webauthn.authenticate.begin
+  - identity.mfa.webauthn.authenticate.complete
+  - identity.mfa.reset
+  - identity.mfa.step-up.enforce
+  - identity.impersonation.start
+  - identity.impersonation.end
+  - identity.breakglass.invoke
+  - identity.breakglass.review.resolve
+data_ownership:
+  postgres_schemas:
+    - northstar_identity
+  classifications:
+    - restricted
+    - confidential
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: export_then_delete

@@ -1,0 +1,45 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.ai
+name: Northstar AI Gateway and RAG
+version: 0.3.0
+description: >-
+  Governed AI as a scoped actor (LAW-09, ARCH-009): a provider/model gateway behind a port with a
+  deterministic mock provider and no silent downgrade (FR-AI-001); an immutable versioned prompt
+  registry (FR-AI-002); AI actor profiles (FR-AI-003); a Tool Broker as the ONLY route from a model
+  to a capability with allowlist, arg-schema, auth, output minimization and trace/cost (FR-AI-004);
+  a RAG pipeline that authorizes before retrieval, retrieves via the retrieval module (ACL in the
+  query), re-checks ACLs before disclosure, treats retrieved/user content as untrusted and verifies
+  citations (FR-AI-005/007); purpose-limited deletable memory (FR-AI-006); A0-A4 approval tiers with
+  A4 prohibited, plus provenance traces (FR-AI-008/009). Proven against a red-team corpus.
+owner: AI Governance Council
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+dependencies:
+  - module_id: northstar.retrieval
+    version_range: ">=0.3.0 <1.0.0"
+capabilities:
+  - ai.answer
+  - ai.memory.remember
+  - ai.memory.forget
+  - ai.memory.list
+  - ai.memory.correct
+  - ai.memory.export
+  - ai.memory.reset
+data_ownership:
+  postgres_schemas:
+    - northstar_ai
+  classifications:
+    - public
+    - internal
+    - confidential
+    - restricted
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: export_then_delete

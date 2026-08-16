@@ -1,0 +1,11 @@
+Northstar Knowledge, Learning, Research and Simulation Framework
+Copyright [yyyy] [copyright owner — set on legal sign-off]
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+PROVISIONAL LICENSE NOTICE
+--------------------------
+Apache-2.0 is the *candidate* license recorded in spec/docs/adr/ADR-D06-framework-license.md
+(status: Proposed). It is provided so the repository has a license baseline during development.
+Final licensing is pending legal/business review (open question OQ-01). Do NOT rely on this for
+external distribution until ADR-D06 is Accepted and the copyright owner/year above are filled in.

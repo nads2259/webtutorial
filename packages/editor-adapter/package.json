@@ -1,0 +1,49 @@
+{
+  "name": "@northstar/editor-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome lint src",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "dependencies": {
+    "prosemirror-commands": "^1",
+    "prosemirror-history": "^1",
+    "prosemirror-keymap": "^1",
+    "prosemirror-model": "^1",
+    "prosemirror-state": "^1",
+    "prosemirror-view": "^1",
+    "@northstar/design-tokens": "workspace:*",
+    "@northstar/ui-primitives": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@testing-library/jest-dom": "^6",
+    "@testing-library/react": "^16",
+    "@testing-library/user-event": "^14",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "ajv": "^8",
+    "ajv-formats": "^3",
+    "jest-axe": "^9",
+    "@types/jest-axe": "^3",
+    "jsdom": "^25",
+    "react": "^19",
+    "react-dom": "^19",
+    "typescript": "^5",
+    "vitest": "^2"
+  }
+}

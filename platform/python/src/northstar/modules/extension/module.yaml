@@ -1,0 +1,41 @@
+manifest_version: "1.0"
+module_id: northstar.extension
+name: Northstar Extension and Theme Runtime
+version: 0.3.0
+description: >-
+  Plugin & theme runtime (docs/14): schema-valid extension/theme/capability manifests declaring
+  identity, capabilities and permissions (FR-EXT-001/002); trust tiers that gate which requested
+  capabilities an extension may hold, so a low-tier extension cannot obtain a high-risk capability
+  (FR-EXT-003); install AND upgrade that verify a cryptographic signature + provenance and REJECT
+  (fail closed) an unsigned/forged/tampered/untrusted-publisher artifact before activation
+  (FR-EXT-004, EVAL-SEC-009 supply chain); disable/uninstall that actually STOP execution and revoke
+  grants so a disabled extension can no longer be dispatched (FR-EXT-005); themes that change ONLY
+  semantic tokens + declared presentation slots and never an authorization decision (FR-EXT-006);
+  content-block extensions that define + validate their own block schema, rejecting malformed
+  content (FR-EXT-007); and a public catalog that requires a verified publisher (FR-EXT-008).
+owner: Extension Council
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+capabilities:
+  - extension.install
+  - extension.upgrade
+  - extension.disable
+  - extension.uninstall
+  - theme.apply
+  - catalog.publish
+data_ownership:
+  postgres_schemas:
+    - northstar_extension
+  classifications:
+    - public
+    - internal
+    - confidential
+    - restricted
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: export_then_delete

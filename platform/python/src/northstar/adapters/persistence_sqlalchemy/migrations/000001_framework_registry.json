@@ -1,0 +1,29 @@
+{
+  "migration_id": "northstar.kernel:000001",
+  "module_id": "northstar.kernel",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the northstar_meta schema (CASCADE) and the vector extension created by this migration; on a shared environment restore from the pre-migration backup instead.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 10
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "the vector extension can be installed"
+    ],
+    "postchecks": [
+      "northstar_meta schema and its registry tables exist",
+      "vector extension is present"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Bootstrap baseline"
+}

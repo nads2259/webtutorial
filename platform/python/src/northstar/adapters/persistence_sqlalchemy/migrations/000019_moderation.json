@@ -1,0 +1,31 @@
+{
+  "migration_id": "northstar.moderation:000019",
+  "module_id": "northstar.moderation",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.media:000018"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policies (and disables FORCE/RLS) on the northstar_moderation.moderation_case and moderation_event tables, then drops both tables and the northstar_moderation schema (CASCADE); on a shared environment restore from the pre-migration backup instead. The schema holds only moderation case metadata and an append-only lifecycle trail, so no reportable content (annotation/comment) is affected by a rollback.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 10
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000018 (northstar.media:000018) has been applied"
+    ],
+    "postchecks": [
+      "northstar_moderation schema with the moderation_case and moderation_event tables exists",
+      "row-level security is enabled and forced on every tenant-scoped moderation table with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase 3 moderation capability baseline (GATE-MODERATION-GA)"
+}

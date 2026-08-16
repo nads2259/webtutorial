@@ -1,0 +1,31 @@
+{
+  "migration_id": "northstar.learning:000016",
+  "module_id": "northstar.learning",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.commerce:000015"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policies (and disables FORCE/RLS) on every northstar_learning table, then drops profile_feature, credential, completion_rule, attempt, assessment_item, overlay, progress, course, learning_path, domain and the northstar_learning schema (CASCADE). progress, attempt, credential and overlay hold learner records and completion evidence, so on a shared environment export the schema first (uninstall policy export_then_delete) and restore from the pre-migration backup rather than dropping in place.",
+  "risk": "high",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 5
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000015 (northstar.commerce:000015) has been applied"
+    ],
+    "postchecks": [
+      "northstar_learning schema with domain, learning_path, course, progress, overlay, assessment_item, attempt, completion_rule, credential and profile_feature tables exists",
+      "row-level security is enabled and forced on every northstar_learning table with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "Phase 6 learning & assessment module (JRN-001 reference product core): hierarchy over published knowledge revisions, progress independent from analytics with stable resume, private overlay, versioned immutable assessment items with deterministic scoring, completion & credentials from explicit rules over auditable evidence, explainable consent/entitlement-aware recommendations, transparent inferred profile, and a multilingual AI tutor reusing ai.answer baseline"
+}

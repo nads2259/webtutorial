@@ -1,0 +1,41 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.enterprise
+name: Northstar Enterprise
+version: 0.3.0
+description: >-
+  Enterprise integration as ADAPTER capabilities that close GATE-ENTERPRISE (FR-IDN-006,
+  FR-LRN-008; EVAL-IDN-005, EVAL-INT-001) — never an identity-core fork. FEDERATION: a
+  signature-verified external IdP assertion (OIDC/SAML-shaped, verified via a port) maps
+  deterministically to a Northstar subject through the existing identity capability; a
+  forged/unverified/expired assertion is rejected uniformly. SCIM PROVISIONING: create/update/
+  deactivate users and groups via a SCIM-shaped adapter, idempotent + audited; deprovision disables
+  the subject's access by reusing identity session invalidation. LTI: a signed launch is verified
+  and maps to an authorized learning context; an invalid launch is rejected. xAPI: learning events
+  emit xAPI-shaped statements to a configured LRS via a port, gated on export consent; disabling the
+  adapter leaves first-party learning state unchanged (independence). Owns the northstar_enterprise
+  schema (forced tenant RLS); exposed only via capabilities.
+owner: Enterprise Readiness Council
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+capabilities:
+  - enterprise.federation.login
+  - enterprise.scim.provision
+  - enterprise.scim.deprovision
+  - enterprise.lti.launch
+  - enterprise.xapi.emit
+data_ownership:
+  postgres_schemas:
+    - northstar_enterprise
+  classifications:
+    - internal
+    - confidential
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: export_then_delete

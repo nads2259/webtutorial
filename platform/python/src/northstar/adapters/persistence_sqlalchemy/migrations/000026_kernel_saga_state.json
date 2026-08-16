@@ -1,0 +1,32 @@
+{
+  "migration_id": "northstar.kernel:000026",
+  "module_id": "northstar.kernel",
+  "version": "0.3.0",
+  "change_class": "schema",
+  "dependencies": [
+    "northstar.learning:000025"
+  ],
+  "reversible": true,
+  "rollback_or_rollforward": "Reversible: downgrade drops the tenant-isolation RLS policy (and disables FORCE/RLS) on northstar_runtime.saga_state, then drops the saga_state table. The table holds only the durable terminal outcome (status + applied/compensated step names) of saga runs used for idempotent re-execution; on a shared environment export the schema first and restore from the pre-migration backup rather than dropping in place; the outbox_event and job tables from 000002 and all other runtime state are untouched.",
+  "risk": "medium",
+  "execution": {
+    "online": false,
+    "restartable": true,
+    "lock_strategy": "bootstrap-exclusive advisory lock",
+    "batch_size": null,
+    "estimated_duration_seconds": 3
+  },
+  "validation": {
+    "prechecks": [
+      "database is a supported PostgreSQL version",
+      "migration 000025 (northstar.learning:000025) has been applied",
+      "the northstar_runtime schema exists (migration 000002 applied)"
+    ],
+    "postchecks": [
+      "northstar_runtime has the saga_state table",
+      "row-level security is enabled and forced on northstar_runtime.saga_state with a tenant-isolation policy keyed to the northstar.tenant_id GUC"
+    ],
+    "backup_required": true
+  },
+  "compatibility_window": "GATE-KERNEL-GA EVAL-KRN-004 closer: durable saga/compensation terminal state (committed|compensated) for idempotent, tenant-scoped long-running workflows"
+}

@@ -1,0 +1,49 @@
+# Northstar developer-experience baseline (config only; not a package declaration).
+# Makes style/type/test rules deterministic from the first line of code.
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["platform/python/src", "modules", "apps", "packages", "services", "tests"]
+extend-exclude = ["spec", ".cursor", "evidence"]
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, isort, bugbear, comprehensions, pyupgrade, simplify,
+# security (bandit-style S), naming, annotations, pytest-style.
+select = ["E", "F", "I", "B", "C4", "UP", "SIM", "S", "N", "ANN", "PT", "RUF"]
+ignore = ["ANN101", "ANN102"]  # self/cls annotations
+
+[tool.ruff.lint.per-file-ignores]
+# tests: asserts, relaxed annotations/util-open/long lines/subprocess
+"**/tests/**" = ["S101", "ANN", "SIM115", "RUF059", "E501", "S603", "S607"]
+"**/conftest.py" = ["ANN"]
+# CI/dev utility scripts: relaxed annotations + intentional subprocess/paths
+"scripts/**" = ["ANN", "E501", "S603", "S607", "SIM115", "RUF005"]
+# the CLI legitimately shells out to pytest and repo scripts
+"platform/python/src/northstar/cli/**" = ["S603", "S607"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["northstar"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+files = ["platform/python/src", "modules", "apps", "packages", "services"]
+mypy_path = "platform/python/src"
+exclude = "(^spec/|^evidence/)"
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers --strict-config"
+pythonpath = ["platform/python/src"]
+testpaths = ["tests"]
+markers = [
+  "unit", "integration", "contract", "journey", "e2e",
+  "accessibility", "security", "tenant_isolation", "performance", "migration",
+]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 85
