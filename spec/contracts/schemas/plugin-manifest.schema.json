@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.northstar.example/contracts/plugin-manifest/1.0.0",
+  "title": "Northstar — Extension (Plugin) Manifest",
+  "description": "Immutable, schema-shaped extension manifest (FR-EXT-001/002). Binds identity, requested permissions, trust tier, signed artifacts and uninstall policy.",
+  "type": "object",
+  "required": [
+    "plugin_id",
+    "version",
+    "publisher",
+    "extension_type",
+    "required_trust_tier",
+    "compatibility",
+    "artifacts",
+    "lifecycle"
+  ],
+  "properties": {
+    "manifest_version": { "type": "string" },
+    "plugin_id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string" },
+    "version": { "type": "string", "minLength": 1 },
+    "publisher": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "extension_type": {
+      "type": "string",
+      "enum": [
+        "provider",
+        "content_block",
+        "studio",
+        "integration",
+        "workflow",
+        "policy_package",
+        "simulation_runtime",
+        "ai_tool",
+        "composite"
+      ]
+    },
+    "required_trust_tier": {
+      "type": "string",
+      "enum": ["T0", "T1", "T2", "T3"]
+    },
+    "compatibility": {
+      "type": "object",
+      "required": ["framework"],
+      "properties": {
+        "framework": { "type": "string", "minLength": 1 }
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["action"],
+        "properties": {
+          "action": { "type": "string", "minLength": 1 },
+          "resource_scope": {
+            "type": "string",
+            "enum": ["global", "product", "organization", "workspace", "owned", "explicit"]
+          },
+          "data_classifications": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["restricted", "confidential", "internal", "public"]
+            }
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["package_digest", "signature", "sbom", "provenance"],
+      "properties": {
+        "package_digest": { "type": "string", "minLength": 1 },
+        "signature": { "type": "string", "minLength": 1 },
+        "sbom": { "type": "string", "minLength": 1 },
+        "provenance": { "type": "string", "minLength": 1 }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "required": ["uninstall"],
+      "properties": {
+        "uninstall": {
+          "type": "object",
+          "required": ["data_policy"],
+          "properties": {
+            "data_policy": {
+              "type": "string",
+              "enum": ["retain", "export_then_delete", "delete"]
+            }
+          }
+        }
+      }
+    }
+  }
+}

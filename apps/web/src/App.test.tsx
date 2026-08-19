@@ -1,10 +1,15 @@
 import { render, screen, within } from "@testing-library/react";
 import { axe } from "jest-axe";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App";
-import { sampleDocument } from "./fixtures/sample-document";
 
-describe("App shell accessibility", () => {
+// The docs shell fetches session/categories on mount; in jsdom those requests just fail and are
+// swallowed, so the shell renders its accessible skeleton. Reset to the home path between tests.
+beforeEach(() => {
+  window.history.pushState({}, "", "/");
+});
+
+describe("Docs app shell accessibility", () => {
   it("provides banner, navigation, main and contentinfo landmarks (WCAG 1.3.1 / 2.4.1)", () => {
     render(<App />);
     expect(screen.getByRole("banner")).toBeInTheDocument();
@@ -13,11 +18,25 @@ describe("App shell accessibility", () => {
     expect(screen.getByRole("contentinfo")).toBeInTheDocument();
   });
 
-  it("offers a skip link targeting main content (WCAG 2.4.1 Bypass Blocks)", () => {
+  it("exposes the Lessons navigation landmark on a course route (WCAG 2.4.1)", () => {
+    // The landing is intentionally full-width with no sidebar; the "Lessons" navigation appears once
+    // a course/topic is selected.
+    window.history.pushState({}, "", "/c/C00");
     render(<App />);
+    expect(screen.getByRole("navigation", { name: "Lessons" })).toBeInTheDocument();
+  });
+
+  it("offers a skip link that is the first focusable element and targets main (WCAG 2.4.1)", () => {
+    const { container } = render(<App />);
     const skip = screen.getByRole("link", { name: /skip to main content/i });
     expect(skip).toHaveAttribute("href", "#main-content");
     expect(screen.getByRole("main")).toHaveAttribute("id", "main-content");
+    const focusables = Array.from(
+      container.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input, [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    expect(focusables[0]).toBe(skip);
   });
 
   it("moves focus to the main region on load (focus management)", () => {
@@ -25,33 +44,23 @@ describe("App shell accessibility", () => {
     expect(screen.getByRole("main")).toHaveFocus();
   });
 
-  it("renders exactly one h1 with the document title (WCAG 2.4.6 / 1.3.1)", () => {
+  it("renders exactly one h1 on the home view (WCAG 2.4.6 / 1.3.1)", () => {
     render(<App />);
-    const h1s = screen.getAllByRole("heading", { level: 1 });
-    expect(h1s).toHaveLength(1);
-    expect(h1s[0]).toHaveTextContent(sampleDocument.title);
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+  });
+
+  it("exposes a labelled search box in the header (docs-site search)", () => {
+    render(<App />);
+    const banner = screen.getByRole("banner");
+    expect(within(banner).getByRole("searchbox", { name: /search lessons/i })).toBeInTheDocument();
   });
 
   it("keeps heading levels in order without skips (WCAG 1.3.1)", () => {
     render(<App />);
-    const headings = screen.getAllByRole("heading");
-    const levels = headings.map((h) => Number(h.tagName.slice(1)));
+    const levels = screen.getAllByRole("heading").map((h) => Number(h.tagName.slice(1)));
     for (let i = 1; i < levels.length; i += 1) {
-      const current = levels[i] ?? 0;
-      const previous = levels[i - 1] ?? 0;
-      expect(current - previous).toBeLessThanOrEqual(1);
+      expect((levels[i] ?? 0) - (levels[i - 1] ?? 0)).toBeLessThanOrEqual(1);
     }
-  });
-
-  it("exposes a live-region status message (WCAG 4.1.3)", () => {
-    render(<App />);
-    expect(screen.getByRole("status")).toHaveTextContent(/published knowledge document loaded/i);
-  });
-
-  it("announces new-tab links only when applicable (no false hints)", () => {
-    render(<App />);
-    const nav = screen.getByRole("navigation", { name: "Primary" });
-    expect(within(nav).getByRole("link", { name: "Learn" })).toBeInTheDocument();
   });
 
   it("has zero serious/critical axe violations on the rendered page", async () => {

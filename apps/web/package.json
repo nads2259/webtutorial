@@ -8,11 +8,14 @@
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome lint src",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:structural": "node scripts/structural.mjs"
   },
   "dependencies": {
     "@northstar/design-tokens": "workspace:*",
     "@northstar/ui-primitives": "workspace:*",
+    "@viz-js/viz": "^3.29.0",
+    "mermaid": "^11.16.1",
     "react": "^19",
     "react-dom": "^19"
   },
@@ -21,12 +24,13 @@
     "@testing-library/jest-dom": "^6",
     "@testing-library/react": "^16",
     "@testing-library/user-event": "14.6.4",
+    "@types/jest-axe": "^3",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4",
     "jest-axe": "^9",
-    "@types/jest-axe": "^3",
     "jsdom": "^25",
+    "playwright": "^1.62.1",
     "typescript": "^5",
     "vite": "^6",
     "vitest": "^2"

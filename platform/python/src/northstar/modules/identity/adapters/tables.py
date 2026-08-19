@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from sqlalchemy import (
     JSON,
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
@@ -27,6 +28,7 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    Text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -64,6 +66,18 @@ class IdentityTables:
     impersonation_grant: Table
     break_glass_access: Table
     post_use_review: Table
+    password_credential: Table
+    verification_token: Table
+    account_event: Table
+
+
+# Local-auth tables (migration 000030) are tenant-scoped by ``organization_id`` and get FORCED
+# tenant RLS.
+IDENTITY_LOCAL_AUTH_TABLES: tuple[str, ...] = (
+    "password_credential",
+    "verification_token",
+    "account_event",
+)
 
 
 def build_identity_tables(
@@ -229,6 +243,65 @@ def build_identity_tables(
     Index("post_use_review_tenant_idx", post_use_review.c.tenant_scope)
     Index("post_use_review_access_idx", post_use_review.c.tenant_scope, post_use_review.c.access_id)
 
+    # Local (email + password) auth (migration 000030). Tenant-scoped by ``organization_id``.
+    # The password is stored only as a salted scrypt hash; email uniqueness is case-insensitive per
+    # tenant. Verification tokens store only the SHA-256 of the opaque token (single-use, expiring).
+    password_credential = Table(
+        "password_credential",
+        metadata,
+        Column("user_id", String, primary_key=True),
+        Column("subject_id", String, nullable=False),
+        Column("organization_id", String, nullable=False),
+        Column("email", String, nullable=False),
+        Column("password_hash", String, nullable=False),
+        Column("email_verified", Boolean, nullable=False),
+        Column("is_admin", Boolean, nullable=False, server_default="false"),
+        Column("created_at", DateTime(timezone=True), nullable=False),
+        Column("updated_at", DateTime(timezone=True), nullable=False),
+        schema=schema,
+    )
+    Index(
+        "uq_password_credential_email",
+        password_credential.c.organization_id,
+        password_credential.c.email,
+        unique=True,
+    )
+    Index("password_credential_subject_idx", password_credential.c.subject_id)
+
+    verification_token = Table(
+        "verification_token",
+        metadata,
+        Column("token_id", String, primary_key=True),
+        Column("organization_id", String, nullable=False),
+        Column("token_sha256", String, nullable=False),
+        Column("purpose", String, nullable=False),
+        Column("subject_id", String, nullable=False),
+        Column("email", String, nullable=False),
+        Column("created_at", DateTime(timezone=True), nullable=False),
+        Column("expires_at", DateTime(timezone=True), nullable=False),
+        Column("consumed_at", DateTime(timezone=True), nullable=True),
+        schema=schema,
+    )
+    Index("uq_verification_token_hash", verification_token.c.token_sha256, unique=True)
+
+    account_event = Table(
+        "account_event",
+        metadata,
+        Column("event_id", String, primary_key=True),
+        Column("organization_id", String, nullable=False),
+        Column("subject_id", String, nullable=False),
+        Column("event_type", String, nullable=False),
+        Column("detail", Text, nullable=True),
+        Column("created_at", DateTime(timezone=True), nullable=False),
+        schema=schema,
+    )
+    Index(
+        "account_event_subject_idx",
+        account_event.c.organization_id,
+        account_event.c.subject_id,
+    )
+    Index("account_event_tenant_idx", account_event.c.organization_id, account_event.c.created_at)
+
     return IdentityTables(
         subject=subject,
         user_account=user_account,
@@ -240,4 +313,7 @@ def build_identity_tables(
         impersonation_grant=impersonation_grant,
         break_glass_access=break_glass_access,
         post_use_review=post_use_review,
+        password_credential=password_credential,
+        verification_token=verification_token,
+        account_event=account_event,
     )

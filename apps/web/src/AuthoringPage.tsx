@@ -1,8 +1,9 @@
-import { color, motion, size, space, type as typeTokens } from "@northstar/design-tokens";
 import { type Block, StructuredEditor } from "@northstar/editor-adapter";
-import { Link, Status, VisuallyHidden } from "@northstar/ui-primitives";
-import type { CSSProperties } from "react";
+import { Status, VisuallyHidden } from "@northstar/ui-primitives";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { SiteFooter } from "./components/SiteFooter";
+import { SiteHeader } from "./components/SiteHeader";
+import { SkipLink } from "./components/SkipLink";
 
 /**
  * Authoring route: the visual structured editor for the canonical typed block
@@ -36,43 +37,6 @@ const INITIAL_BLOCKS: readonly Block[] = [
   },
 ];
 
-const skipLinkStyle: CSSProperties = {
-  position: "absolute",
-  left: space.sm,
-  top: space.sm,
-  padding: space.sm,
-  background: color.surface,
-  color: color.primary,
-  border: `${size.focusRingWidthPx}px solid ${color.focusRing}`,
-  borderRadius: 4,
-  transform: "translateY(-200%)",
-  transition: `transform ${motion.durationFastMs}ms ${motion.easingStandard}`,
-  zIndex: 10,
-};
-
-const shellStyle: CSSProperties = {
-  fontFamily: typeTokens.fontFamily,
-  fontSize: typeTokens.baseSizePx,
-  lineHeight: typeTokens.lineHeight,
-  color: color.text,
-  background: color.surface,
-  minHeight: "100vh",
-};
-
-const contentStyle: CSSProperties = {
-  maxWidth: 820,
-  margin: "0 auto",
-  padding: space.lg,
-};
-
-const outlineStyle: CSSProperties = {
-  marginTop: space.lg,
-  padding: space.md,
-  border: `1px solid ${color.border}`,
-  borderRadius: 4,
-  background: color.surfaceMuted,
-};
-
 function excerpt(block: Block): string {
   switch (block.type) {
     case "heading":
@@ -98,7 +62,7 @@ export function AuthoringPage(): React.JSX.Element {
   const [blocks, setBlocks] = useState<Block[]>(() => INITIAL_BLOCKS.slice());
 
   useEffect(() => {
-    document.title = "Authoring — Northstar Knowledge";
+    document.title = "Authoring — Bestinfopages";
     mainRef.current?.focus();
   }, []);
 
@@ -108,30 +72,41 @@ export function AuthoringPage(): React.JSX.Element {
   );
 
   return (
-    <div style={shellStyle}>
-      <a href="#authoring-main" style={skipLinkStyle} data-testid="skip-link">
-        Skip to editor
-      </a>
-      <header>
-        <nav aria-label="Primary">
-          <ul>
-            <li>
-              <Link href="#/">Read</Link>
-            </li>
-            <li>
-              <Link href="#/authoring">Author</Link>
-            </li>
-          </ul>
-        </nav>
-      </header>
-      <main id="authoring-main" ref={mainRef} tabIndex={-1} style={contentStyle} aria-labelledby="authoring-title">
+    <div className="ns-shell">
+      <SkipLink target="authoring-main">Skip to editor</SkipLink>
+      <SiteHeader
+        items={[
+          { label: "Read", href: "#/" },
+          { label: "Author", href: "#/authoring", current: true },
+          { label: "Simulation", href: "#/simulation" },
+        ]}
+        cta={{ label: "Get started", href: "#/authoring" }}
+      />
+      <main
+        id="authoring-main"
+        ref={mainRef}
+        tabIndex={-1}
+        className="ns-main ns-main--wide"
+        aria-labelledby="authoring-title"
+      >
+        <div className="bip-kicker">
+          <span className="bip-chip bip-chip--edit">Structured editor</span>
+          <span className="bip-meta-sep" aria-hidden="true" />
+          <span>Keyboard-first authoring</span>
+        </div>
         <h1 id="authoring-title">Authoring</h1>
         <p>
           Edit the structured document below. Use the toolbar (or Alt+Arrow keys) to add, reorder
           and remove blocks without a mouse.
         </p>
-        <StructuredEditor initialBlocks={INITIAL_BLOCKS} onChange={setBlocks} label="Document body" />
-        <section style={outlineStyle} aria-labelledby="outline-title">
+        <div className="ns-panel">
+          <StructuredEditor
+            initialBlocks={INITIAL_BLOCKS}
+            onChange={setBlocks}
+            label="Document body"
+          />
+        </div>
+        <section className="ns-panel ns-outline" aria-labelledby="outline-title">
           <h2 id="outline-title">Document outline</h2>
           <Status>{`${blocks.length} blocks in draft`}</Status>
           <ol>
@@ -144,12 +119,9 @@ export function AuthoringPage(): React.JSX.Element {
           </ol>
         </section>
       </main>
-      <footer>
-        <p>
-          <VisuallyHidden>Footer: </VisuallyHidden>
-          Northstar authoring environment.
-        </p>
-      </footer>
+      <SiteFooter>
+        The Bestinfopages structured editor — produce clean, typed content, never arbitrary markup.
+      </SiteFooter>
     </div>
   );
 }

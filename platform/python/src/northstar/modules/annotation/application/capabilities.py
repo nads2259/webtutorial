@@ -163,6 +163,12 @@ class AnnotationView:
     current_revision_id: str
     thread_id: str | None
     parent_annotation_id: str | None
+    body_type: str
+    body_content: Any
+    body_locale: str | None
+    creator_id: str
+    creator_type: str
+    created_at: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -487,4 +493,10 @@ def _view(annotation: Annotation) -> AnnotationView:
         current_revision_id=annotation.target.current_revision_id,
         thread_id=annotation.thread_id,
         parent_annotation_id=annotation.parent_annotation_id,
+        body_type=annotation.body.type.value,
+        body_content=annotation.body.content,
+        body_locale=annotation.body.locale,
+        creator_id=annotation.creator.id,
+        creator_type=annotation.creator.type.value,
+        created_at=annotation.created_at.isoformat(),
     )

@@ -46,6 +46,27 @@ from ..application.capabilities import (
     RotateSessionResult,
     SessionView,
 )
+from ..application.local_auth import (
+    CAP_ACTIVITY_ADMIN_LIST,
+    CAP_ACTIVITY_LIST,
+    CAP_LOCAL_CONFIRM_EMAIL,
+    CAP_LOCAL_LOGIN,
+    CAP_LOCAL_REGISTER,
+    CAP_LOCAL_REQUEST_RESET,
+    CAP_LOCAL_RESEND_CONFIRMATION,
+    CAP_LOCAL_RESET_PASSWORD,
+    ActivityListQuery,
+    AdminActivityListQuery,
+    ConfirmEmailCommand,
+    ConfirmEmailResult,
+    LoginCommand,
+    LoginResult,
+    RegisterCommand,
+    RegisterResult,
+    RequestPasswordResetCommand,
+    ResendConfirmationCommand,
+    ResetPasswordCommand,
+)
 from ..application.mfa import (
     CAP_BEGIN_WEBAUTHN_AUTHENTICATION,
     CAP_BEGIN_WEBAUTHN_REGISTRATION,
@@ -70,6 +91,7 @@ from ..application.mfa import (
 )
 from ..application.ports import SessionStorePort
 from ..domain.errors import IdentityError, StepUpRequired
+from ..domain.local import LocalAuthError
 
 _STATE_KEY = "northstar_identity_api_dependencies"
 _PROBLEM_CONTENT_TYPE = "application/problem+json"
@@ -106,6 +128,9 @@ class IdentityApiDependencies:
     login_scopes: tuple[str, ...] = ("openid", "email")
     cookies: IdentityCookieConfig = field(default_factory=IdentityCookieConfig)
     post_login_url: str | None = None
+    # Maps an authenticated subject id -> whether it is a backend/management admin. Defaults to
+    # non-admin so the management surface is closed unless an admin lookup is wired.
+    admin_lookup: Callable[[str], bool] = lambda _subject_id: False
 
 
 def bind_identity_dependencies(app_state: object, deps: IdentityApiDependencies) -> None:
@@ -119,6 +144,13 @@ def _deps(request: Request) -> IdentityApiDependencies:
 
 def _correlation_id(request: Request) -> str:
     return request.headers.get("X-Correlation-Id") or f"cor_{uuid.uuid4().hex}"
+
+
+def _int(value: str | None, default: int) -> int:
+    try:
+        return int(value) if value is not None else default
+    except (TypeError, ValueError):
+        return default
 
 
 def _anonymous_context(request: Request) -> RequestContext:
@@ -249,12 +281,19 @@ def create_identity_router() -> APIRouter:
         except IdentityError:
             return _unauthenticated(context.correlation_id)
         completed: CompleteAuthenticationResult = result.value  # type: ignore[assignment]
-        body = {
-            "subject_id": completed.subject_id,
-            "assurance": completed.assurance.value,
-            "provisioned": completed.provisioned,
-        }
-        response = JSONResponse(status_code=200, content=body)
+        # After a browser login, return to the app (post_login_url) rather than a JSON page; API
+        # clients that want the JSON body simply leave post_login_url unset.
+        if deps.post_login_url:
+            response: Response = RedirectResponse(url=deps.post_login_url, status_code=303)
+        else:
+            response = JSONResponse(
+                status_code=200,
+                content={
+                    "subject_id": completed.subject_id,
+                    "assurance": completed.assurance.value,
+                    "provisioned": completed.provisioned,
+                },
+            )
         _set_session_cookies(response, deps, raw_session_token=completed.raw_session_token)
         response.delete_cookie(deps.cookies.state_cookie, path=deps.cookies.path)
         response.headers["X-Correlation-Id"] = context.correlation_id
@@ -285,6 +324,7 @@ def create_identity_router() -> APIRouter:
                 "subject_id": view.subject_id,
                 "assurance": view.assurance.value,
                 "tenant_scope": view.tenant_scope,
+                "is_admin": bool(deps.admin_lookup(view.subject_id)),
             },
             headers={"X-Correlation-Id": context.correlation_id},
         )
@@ -576,6 +616,228 @@ def create_identity_router() -> APIRouter:
         return JSONResponse(
             status_code=200,
             content={"step_up_satisfied": True},
+            headers={"X-Correlation-Id": context.correlation_id},
+        )
+
+    # ---- Local (email + password) auth -------------------------------------------------------
+
+    @router.post("/register")
+    async def register(request: Request) -> Response:
+        deps = _deps(request)
+        context = _anonymous_context(request)
+        body = await _json_body(request)
+        command = Command(
+            capability=CAP_LOCAL_REGISTER,
+            version=CAP_VERSION,
+            payload=RegisterCommand(
+                email=str(body.get("email", "")), password=str(body.get("password", ""))
+            ),
+        )
+        try:
+            result = deps.command_bus.dispatch(command, context)
+        except LocalAuthError as exc:
+            status = 409 if "already registered" in str(exc) else 422
+            return _problem(
+                status, "identity.local.register-failed", "Registration failed",
+                str(exc), context.correlation_id,
+            )
+        except IdentityError:
+            return _problem(
+                422, "identity.local.register-failed", "Registration failed",
+                "Registration failed.", context.correlation_id,
+            )
+        view: RegisterResult = result.value  # type: ignore[assignment]
+        return JSONResponse(
+            status_code=201,
+            content={"subject_id": view.subject_id, "email": view.email, "confirmation_required": True},
+            headers={"X-Correlation-Id": context.correlation_id},
+        )
+
+    @router.post("/confirm")
+    async def confirm_email(request: Request) -> Response:
+        deps = _deps(request)
+        context = _anonymous_context(request)
+        body = await _json_body(request)
+        command = Command(
+            capability=CAP_LOCAL_CONFIRM_EMAIL,
+            version=CAP_VERSION,
+            payload=ConfirmEmailCommand(token=str(body.get("token", ""))),
+        )
+        try:
+            result = deps.command_bus.dispatch(command, context)
+        except IdentityError as exc:
+            return _problem(
+                400, "identity.local.confirm-failed", "Confirmation failed",
+                str(exc), context.correlation_id,
+            )
+        view: ConfirmEmailResult = result.value  # type: ignore[assignment]
+        return JSONResponse(
+            status_code=200,
+            content={"confirmed": view.confirmed, "email": view.email},
+            headers={"X-Correlation-Id": context.correlation_id},
+        )
+
+    @router.post("/login")
+    async def local_login(request: Request) -> Response:
+        deps = _deps(request)
+        context = _anonymous_context(request)
+        body = await _json_body(request)
+        command = Command(
+            capability=CAP_LOCAL_LOGIN,
+            version=CAP_VERSION,
+            payload=LoginCommand(
+                email=str(body.get("email", "")), password=str(body.get("password", ""))
+            ),
+        )
+        try:
+            result = deps.command_bus.dispatch(command, context)
+        except LocalAuthError as exc:
+            if str(exc) == "email_not_confirmed":
+                return _problem(
+                    403, "identity.local.email-not-confirmed", "Email not confirmed",
+                    "Please confirm your email address before signing in.", context.correlation_id,
+                )
+            return _unauthenticated(context.correlation_id)
+        except IdentityError:
+            return _unauthenticated(context.correlation_id)
+        view: LoginResult = result.value  # type: ignore[assignment]
+        response: Response = JSONResponse(
+            status_code=200,
+            content={"subject_id": view.subject_id},
+        )
+        _set_session_cookies(response, deps, raw_session_token=view.raw_session_token)
+        response.headers["X-Correlation-Id"] = context.correlation_id
+        return response
+
+    @router.post("/forgot-password")
+    async def forgot_password(request: Request) -> Response:
+        deps = _deps(request)
+        context = _anonymous_context(request)
+        body = await _json_body(request)
+        command = Command(
+            capability=CAP_LOCAL_REQUEST_RESET,
+            version=CAP_VERSION,
+            payload=RequestPasswordResetCommand(email=str(body.get("email", ""))),
+        )
+        deps.command_bus.dispatch(command, context)
+        return JSONResponse(
+            status_code=200,
+            content={"ok": True},
+            headers={"X-Correlation-Id": context.correlation_id},
+        )
+
+    @router.post("/reset-password")
+    async def reset_password(request: Request) -> Response:
+        deps = _deps(request)
+        context = _anonymous_context(request)
+        body = await _json_body(request)
+        command = Command(
+            capability=CAP_LOCAL_RESET_PASSWORD,
+            version=CAP_VERSION,
+            payload=ResetPasswordCommand(
+                token=str(body.get("token", "")), password=str(body.get("password", ""))
+            ),
+        )
+        try:
+            deps.command_bus.dispatch(command, context)
+        except IdentityError as exc:
+            return _problem(
+                400, "identity.local.reset-failed", "Password reset failed",
+                str(exc), context.correlation_id,
+            )
+        return JSONResponse(
+            status_code=200,
+            content={"ok": True},
+            headers={"X-Correlation-Id": context.correlation_id},
+        )
+
+    @router.post("/resend-confirmation")
+    async def resend_confirmation(request: Request) -> Response:
+        deps = _deps(request)
+        context = _anonymous_context(request)
+        body = await _json_body(request)
+        command = Command(
+            capability=CAP_LOCAL_RESEND_CONFIRMATION,
+            version=CAP_VERSION,
+            payload=ResendConfirmationCommand(email=str(body.get("email", ""))),
+        )
+        deps.command_bus.dispatch(command, context)
+        return JSONResponse(
+            status_code=200,
+            content={"ok": True},
+            headers={"X-Correlation-Id": context.correlation_id},
+        )
+
+    @router.get("/activity")
+    def activity(request: Request, limit: int = 50) -> Response:
+        deps = _deps(request)
+        authed = _authenticated_context(request, deps)
+        if authed is None:
+            return _unauthenticated(_correlation_id(request))
+        context, _session_id = authed
+        query = Query(
+            capability=CAP_ACTIVITY_LIST,
+            version=CAP_VERSION,
+            parameters=ActivityListQuery(limit=min(max(limit, 1), 100)),
+        )
+        result = deps.query_bus.dispatch(query, context)
+        view = result.value
+        return JSONResponse(
+            status_code=200,
+            content={
+                "events": [
+                    {
+                        "event_type": e.event_type,
+                        "created_at": e.created_at.isoformat(),
+                        "detail": e.detail,
+                    }
+                    for e in view.events
+                ]
+            },
+            headers={"X-Correlation-Id": context.correlation_id},
+        )
+
+    @router.get("/admin/activity")
+    def admin_activity(request: Request) -> Response:
+        deps = _deps(request)
+        authed = _authenticated_context(request, deps)
+        if authed is None:
+            return _unauthenticated(_correlation_id(request))
+        context, _session_id = authed
+        if not deps.admin_lookup(context.actor.id):
+            return _problem(
+                403, "authorization.denied", "Admin access required",
+                "This endpoint requires a management account.", context.correlation_id,
+            )
+        params = request.query_params
+        query = Query(
+            capability=CAP_ACTIVITY_ADMIN_LIST,
+            version=CAP_VERSION,
+            parameters=AdminActivityListQuery(
+                limit=min(max(_int(params.get("limit"), 25), 1), 100),
+                offset=max(_int(params.get("offset"), 0), 0),
+                event_type=params.get("event_type") or None,
+                q=params.get("q") or None,
+                created_after=params.get("created_after") or None,
+                created_before=params.get("created_before") or None,
+            ),
+        )
+        result = deps.query_bus.dispatch(query, context)
+        view = result.value
+        return JSONResponse(
+            status_code=200,
+            content={
+                "events": [
+                    {
+                        "event_type": e.event_type,
+                        "created_at": e.created_at.isoformat(),
+                        "subject_id": e.subject_id,
+                        "detail": e.detail,
+                    }
+                    for e in view.events
+                ],
+                "total": view.total if view.total is not None else len(view.events),
+            },
             headers={"X-Correlation-Id": context.correlation_id},
         )
 

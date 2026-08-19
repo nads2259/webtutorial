@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 360" role="img" aria-label="networking">
+  <defs>
+  <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#4F46E5"/>
+    <stop offset="52%" stop-color="#7C3AED"/>
+    <stop offset="100%" stop-color="#0EA5E9"/>
+  </linearGradient>
+  <linearGradient id="soft" x1="0%" y1="100%" x2="100%" y2="0%">
+    <stop offset="0%" stop-color="#ffffff" stop-opacity="0.14"/>
+    <stop offset="100%" stop-color="#ffffff" stop-opacity="0.04"/>
+  </linearGradient>
+</defs>
+  <rect width="1280" height="360" fill="url(#bg)"/>
+  <rect width="1280" height="360" fill="url(#soft)"/>
+  <circle cx="159" cy="71" r="55" fill="#ffffff" fill-opacity="0.08"/>
+    <circle cx="272" cy="142" r="72" fill="#ffffff" fill-opacity="0.12"/>
+    <circle cx="385" cy="213" r="89" fill="#ffffff" fill-opacity="0.16"/>
+    <circle cx="498" cy="284" r="42" fill="#ffffff" fill-opacity="0.08"/>
+    <circle cx="611" cy="75" r="59" fill="#ffffff" fill-opacity="0.12"/>
+    <path d="M0,320 L0,307 L40,317 L80,328 L120,336 L160,340 L200,338 L240,332 L280,322 L320,311 L360,302 L400,297 L440,297 L480,302 L520,311 L560,322 L600,332 L640,338 L680,340 L720,336 L760,328 L800,317 L840,307 L880,299 L920,296 L960,298 L1000,305 L1040,316 L1080,326 L1120,335 L1160,340 L1200,339 L1240,333 L1280,324 L1280,360 L0,360 Z" fill="#ffffff" fill-opacity="0.08"/>
+</svg>

@@ -78,6 +78,16 @@ class MessagingRepositoryPort(Protocol):
         self, *, organization_id: str, template_id: str, version: int
     ) -> TemplateVersion | None: ...
 
+    def get_latest_template(
+        self, *, organization_id: str, template_id: str
+    ) -> TemplateVersion | None:
+        """Return the highest published version of ``template_id`` (or ``None``)."""
+        ...
+
+    def list_templates(self, *, organization_id: str) -> Sequence[TemplateVersion]:
+        """Return the latest version of every distinct template id in the tenant."""
+        ...
+
     # Campaigns ----------------------------------------------------------
     def add_campaign(self, *, organization_id: str, campaign: Campaign) -> None: ...
 

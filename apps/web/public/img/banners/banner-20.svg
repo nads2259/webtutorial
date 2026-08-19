@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 360" role="img" aria-label="decorators">
+  <defs>
+  <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#4F46E5"/>
+    <stop offset="52%" stop-color="#7C3AED"/>
+    <stop offset="100%" stop-color="#0EA5E9"/>
+  </linearGradient>
+  <linearGradient id="soft" x1="0%" y1="100%" x2="100%" y2="0%">
+    <stop offset="0%" stop-color="#ffffff" stop-opacity="0.14"/>
+    <stop offset="100%" stop-color="#ffffff" stop-opacity="0.04"/>
+  </linearGradient>
+</defs>
+  <rect width="1280" height="360" fill="url(#bg)"/>
+  <rect width="1280" height="360" fill="url(#soft)"/>
+  <circle cx="820" cy="260" r="48" fill="#ffffff" fill-opacity="0.08"/>
+    <circle cx="933" cy="51" r="65" fill="#ffffff" fill-opacity="0.12"/>
+    <circle cx="126" cy="122" r="82" fill="#ffffff" fill-opacity="0.16"/>
+    <circle cx="239" cy="193" r="35" fill="#ffffff" fill-opacity="0.08"/>
+    <circle cx="352" cy="264" r="52" fill="#ffffff" fill-opacity="0.12"/>
+</svg>

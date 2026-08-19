@@ -1,0 +1,35 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.codelab
+name: Northstar Codelab
+version: 0.3.0
+description: >-
+  Run learner-submitted code in a server-side sandbox behind a swappable CodeSandboxPort (a
+  locked-down subprocess in the reference adapter; a container/microVM/nsjail is a drop-in swap), and
+  durably TRACK every execution as an immutable, tamper-evident code_run record. The single
+  authoritative action codelab.run.execute is policy-checked and audited by the kernel command bus;
+  codelab.run.list reads the caller's own runs.
+owner: Learning Platform Guild
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+dependencies: []
+capabilities:
+  - codelab.run.execute
+  - codelab.run.list
+produced_events: []
+data_ownership:
+  postgres_schemas:
+    - northstar_codelab
+  object_prefixes:
+    - codelab/
+  classifications:
+    - internal
+lifecycle:
+  migrations: true
+  health_checks:
+    - migration_compatibility
+  uninstall_policy: export_then_delete

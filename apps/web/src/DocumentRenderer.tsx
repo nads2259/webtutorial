@@ -30,7 +30,7 @@ export interface DocumentRendererProps {
 
 export function DocumentRenderer({ document }: DocumentRendererProps): React.JSX.Element {
   return (
-    <article aria-labelledby="doc-title">
+    <article className="ns-article" aria-labelledby="doc-title">
       <h1 id="doc-title">{document.title}</h1>
       {document.summary ? <p>{document.summary}</p> : null}
       {document.blocks.map(renderBlock)}

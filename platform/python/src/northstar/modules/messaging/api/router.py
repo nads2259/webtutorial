@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 
 from northstar.kernel.context import RequestContext, ResourceRef
 from northstar.kernel.errors import KernelError, PolicyDenied
-from northstar.kernel.messaging import Command, CommandBus
+from northstar.kernel.messaging import Command, CommandBus, Query, QueryBus
 
 from ..application.capabilities import (
     CAP_CAMPAIGN_CREATE,
@@ -33,6 +33,14 @@ from ..application.capabilities import (
     ScheduleCampaignCommand,
     SendCampaignCommand,
     UnsubscribeCommand,
+)
+from ..application.transactional import (
+    CAP_OUTBOX_LIST,
+    CAP_TEMPLATE_GET,
+    CAP_TEMPLATE_LIST,
+    GetTemplateQuery,
+    ListOutboxQuery,
+    ListTemplatesQuery,
 )
 from ..domain.errors import MessagingError
 from ..domain.model import RES_CAMPAIGN, Recipient
@@ -48,7 +56,9 @@ class MessagingApiDependencies:
     """Collaborators the ``/messaging`` router needs, injected at the composition root."""
 
     command_bus: CommandBus
+    query_bus: QueryBus
     authenticate: Authenticator
+    admin_lookup: Callable[[str], bool] = lambda _subject_id: False
 
 
 def bind_messaging_dependencies(app_state: object, deps: MessagingApiDependencies) -> None:
@@ -77,6 +87,13 @@ def _problem(status: int, code: str, detail: str, correlation_id: str) -> JSONRe
 
 def _campaign_resource(context: RequestContext) -> ResourceRef:
     return ResourceRef(type=RES_CAMPAIGN, id=context.tenant_scope or "-")
+
+
+def _int(value: str | None, default: int) -> int:
+    try:
+        return int(value) if value is not None else default
+    except (TypeError, ValueError):
+        return default
 
 
 def _recipients_from_body(body: dict) -> tuple[Recipient, ...]:
@@ -109,6 +126,13 @@ def create_messaging_router() -> APIRouter:
     def _auth(request: Request) -> RequestContext | None:
         return _deps(request).authenticate(request)
 
+    def _admin(request: Request, context: RequestContext) -> JSONResponse | None:
+        if not _deps(request).admin_lookup(context.actor.id):
+            return _problem(
+                403, "authorization.denied", "Admin access required", context.correlation_id
+            )
+        return None
+
     def _dispatch(request: Request, context: RequestContext, cap: str, payload: object) -> object:
         command = Command(
             capability=cap,
@@ -123,6 +147,9 @@ def create_messaging_router() -> APIRouter:
         context = _auth(request)
         if context is None:
             return _problem(401, "authentication.required", "Authentication is required", "-")
+        denied = _admin(request, context)
+        if denied is not None:
+            return denied
         body = await _body(request)
         try:
             result = _dispatch(
@@ -250,6 +277,117 @@ def create_messaging_router() -> APIRouter:
                 "suppressed_excluded": value.suppressed_excluded,
                 "consent_excluded": value.consent_excluded,
                 "suppression_leak": value.suppression_leak,
+            },
+        )
+
+    @router.get("/templates")
+    def list_templates(request: Request) -> JSONResponse:
+        context = _auth(request)
+        if context is None:
+            return _problem(401, "authentication.required", "Authentication is required", "-")
+        denied = _admin(request, context)
+        if denied is not None:
+            return denied
+        try:
+            result = _deps(request).query_bus.dispatch(
+                Query(capability=CAP_TEMPLATE_LIST, version=CAP_VERSION, parameters=ListTemplatesQuery()),
+                context,
+            )
+        except PolicyDenied:
+            return _problem(403, "authorization.denied", "Access denied", context.correlation_id)
+        return JSONResponse(
+            status_code=200,
+            content={
+                "templates": [
+                    {
+                        "template_id": t.template_id,
+                        "version": t.version,
+                        "subject": t.subject,
+                        "required_variables": list(t.required_variables),
+                    }
+                    for t in result.value.templates
+                ]
+            },
+        )
+
+    @router.get("/templates/{template_id}")
+    def get_template(template_id: str, request: Request) -> JSONResponse:
+        context = _auth(request)
+        if context is None:
+            return _problem(401, "authentication.required", "Authentication is required", "-")
+        denied = _admin(request, context)
+        if denied is not None:
+            return denied
+        try:
+            result = _deps(request).query_bus.dispatch(
+                Query(
+                    capability=CAP_TEMPLATE_GET,
+                    version=CAP_VERSION,
+                    parameters=GetTemplateQuery(template_id=template_id),
+                ),
+                context,
+            )
+        except PolicyDenied:
+            return _problem(403, "authorization.denied", "Access denied", context.correlation_id)
+        except (MessagingError, KernelError) as exc:
+            return _problem(404, "messaging.template.not-found", str(exc), context.correlation_id)
+        t = result.value
+        return JSONResponse(
+            status_code=200,
+            content={
+                "template_id": t.template_id,
+                "version": t.version,
+                "subject": t.subject,
+                "html_body": t.html_body,
+                "text_body": t.text_body,
+                "required_variables": list(t.required_variables),
+            },
+        )
+
+    @router.get("/outbox")
+    def list_outbox(request: Request) -> JSONResponse:
+        context = _auth(request)
+        if context is None:
+            return _problem(401, "authentication.required", "Authentication is required", "-")
+        denied = _admin(request, context)
+        if denied is not None:
+            return denied
+        params = request.query_params
+        try:
+            result = _deps(request).query_bus.dispatch(
+                Query(
+                    capability=CAP_OUTBOX_LIST,
+                    version=CAP_VERSION,
+                    parameters=ListOutboxQuery(
+                        limit=min(max(_int(params.get("limit"), 25), 1), 100),
+                        offset=max(_int(params.get("offset"), 0), 0),
+                        status=params.get("status") or None,
+                        q=params.get("q") or None,
+                        created_after=params.get("created_after") or None,
+                        created_before=params.get("created_before") or None,
+                    ),
+                ),
+                context,
+            )
+        except PolicyDenied:
+            return _problem(403, "authorization.denied", "Access denied", context.correlation_id)
+        view = result.value
+        return JSONResponse(
+            status_code=200,
+            content={
+                "messages": [
+                    {
+                        "message_id": m.message_id,
+                        "to_email": m.to_email,
+                        "template_id": m.template_id,
+                        "subject": m.subject,
+                        "html_body": m.html_body,
+                        "status": m.status,
+                        "created_at": m.created_at.isoformat(),
+                    }
+                    for m in view.messages
+                ],
+                "total": view.total if view.total is not None else len(view.messages),
             },
         )
 

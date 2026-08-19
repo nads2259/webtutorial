@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from northstar.kernel.context import Actor
@@ -30,7 +30,7 @@ from ..domain.model import (
     Visibility,
     new_revision,
 )
-from .ports import KnowledgeRepositoryPort
+from .ports import CatalogRow, KnowledgeRepositoryPort
 
 CAP_VERSION = "1.0.0"
 
@@ -41,6 +41,8 @@ CAP_PUBLISH_DOCUMENT = "knowledge.document.publish"
 CAP_GET_DOCUMENT = "knowledge.document.get"
 CAP_GET_REVISION = "knowledge.revision.get"
 CAP_ASSIGN_TAXONOMY = "knowledge.taxonomy.assign"
+CAP_BROWSE_DOCUMENTS = "knowledge.document.browse"
+CAP_TAXONOMY_TERMS = "knowledge.taxonomy.terms"
 
 KNOWLEDGE_CAPABILITIES: tuple[str, ...] = (
     CAP_CREATE_DOCUMENT,
@@ -50,6 +52,8 @@ KNOWLEDGE_CAPABILITIES: tuple[str, ...] = (
     CAP_GET_DOCUMENT,
     CAP_GET_REVISION,
     CAP_ASSIGN_TAXONOMY,
+    CAP_BROWSE_DOCUMENTS,
+    CAP_TAXONOMY_TERMS,
 )
 
 EVENT_DOCUMENT_PUBLISHED = "northstar.knowledge.document-published.v1"
@@ -159,6 +163,60 @@ class RevisionView:
     title: str
     content_hash: str
     blocks: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class BrowseDocumentsQuery:
+    """List published documents in the caller's tenant, optionally filtered by taxonomy."""
+
+    category: str | None = None
+    module: str | None = None
+    kind: str | None = None
+    subject: str | None = None
+    phase: str | None = None
+    phase_title: str | None = None
+    q: str | None = None
+    published_after: str | None = None
+    published_before: str | None = None
+    sort: str = "order"
+    include_total: bool = False
+    limit: int = 200
+    offset: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogEntryView:
+    object_id: str
+    revision_id: str | None
+    title: str
+    summary: str | None
+    document_type: str
+    locale: str
+    terms: dict[str, list[str]]
+    published_at: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogView:
+    entries: tuple[CatalogEntryView, ...]
+    total: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TaxonomyTermsQuery:
+    scheme: str
+
+
+@dataclass(frozen=True, slots=True)
+class TermCountView:
+    term: str
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
+class TermsView:
+    scheme: str
+    terms: tuple[TermCountView, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -484,6 +542,99 @@ class AssignTaxonomy:
             scheme=assignment.scheme,
             term=assignment.term,
         )
+
+
+class BrowseDocuments:
+    """``knowledge.document.browse`` (query) — list published docs by taxonomy in the tenant."""
+
+    def __init__(self, *, repository: KnowledgeRepositoryPort) -> None:
+        self._repo = repository
+
+    def handle(self, request: object) -> CatalogView:
+        query = _typed(request, BrowseDocumentsQuery)
+        organization_id = _tenant(request)
+        filters: dict[str, str] = {}
+        for scheme, value in (
+            ("category", query.category),
+            ("module", query.module),
+            ("kind", query.kind),
+            ("subject", query.subject),
+            ("phase", query.phase),
+            ("phase_title", query.phase_title),
+        ):
+            if value:
+                filters[scheme] = value
+        limit = max(1, min(query.limit, 1000))
+        offset = max(0, query.offset)
+        title_query = (query.q or "").strip() or None
+        published_after = _parse_dt(query.published_after)
+        published_before = _parse_dt(query.published_before)
+        sort = query.sort if query.sort in {"order", "recent"} else "order"
+        rows = self._repo.list_published(
+            organization_id=organization_id,
+            filters=filters,
+            limit=limit,
+            offset=offset,
+            title_query=title_query,
+            published_after=published_after,
+            published_before=published_before,
+            sort=sort,
+        )
+        total = None
+        if query.include_total:
+            total = self._repo.count_published(
+                organization_id=organization_id,
+                filters=filters,
+                title_query=title_query,
+                published_after=published_after,
+                published_before=published_before,
+            )
+        return CatalogView(entries=tuple(_to_catalog_view(r) for r in rows), total=total)
+
+
+class TaxonomyTerms:
+    """``knowledge.taxonomy.terms`` (query) — distinct terms + counts for a taxonomy scheme."""
+
+    def __init__(self, *, repository: KnowledgeRepositoryPort) -> None:
+        self._repo = repository
+
+    def handle(self, request: object) -> TermsView:
+        query = _typed(request, TaxonomyTermsQuery)
+        organization_id = _tenant(request)
+        terms = self._repo.distinct_terms(organization_id=organization_id, scheme=query.scheme)
+        return TermsView(
+            scheme=query.scheme,
+            terms=tuple(TermCountView(term=t.term, count=t.count) for t in terms),
+        )
+
+
+def _to_catalog_view(row: CatalogRow) -> CatalogEntryView:
+    published = row.published_at.isoformat() if row.published_at else None
+    return CatalogEntryView(
+        object_id=row.object_id,
+        revision_id=row.revision_id,
+        title=row.title,
+        summary=row.summary,
+        document_type=row.document_type,
+        locale=row.locale,
+        terms=dict(row.terms),
+        published_at=published,
+    )
+
+
+def _parse_dt(value: str | None) -> datetime | None:
+    if not value or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
 
 
 def _require_title(title: str) -> None:

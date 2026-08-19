@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.northstar.example/contracts/theme-token/1.0.0",
+  "title": "Northstar — Theme Token Set",
+  "description": "Immutable, schema-shaped semantic token set (FR-EXT-006). Carries only presentation tokens and accessibility flags, with no authorization surface.",
+  "type": "object",
+  "required": ["theme_id", "version", "framework_compatibility", "tokens", "accessibility"],
+  "properties": {
+    "theme_id": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "framework_compatibility": { "type": "string", "minLength": 1 },
+    "tokens": {
+      "type": "object",
+      "required": ["color", "typography", "space", "radius", "motion"],
+      "properties": {
+        "color": { "type": "object" },
+        "typography": { "type": "object" },
+        "space": { "type": "object" },
+        "radius": { "type": "object" },
+        "motion": { "type": "object" }
+      }
+    },
+    "accessibility": {
+      "type": "object",
+      "required": ["target", "supports_reduced_motion", "supports_forced_colors"],
+      "properties": {
+        "target": { "type": "string", "minLength": 1 },
+        "supports_reduced_motion": { "type": "boolean" },
+        "supports_forced_colors": { "type": "boolean" }
+      }
+    }
+  }
+}

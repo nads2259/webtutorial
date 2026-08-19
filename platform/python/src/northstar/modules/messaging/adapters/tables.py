@@ -27,6 +27,7 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    Text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -40,6 +41,9 @@ MESSAGING_TENANT_TABLES: tuple[str, ...] = (
     "suppression_entry",
     "delivery_receipt",
 )
+
+# The durable transactional-email outbox (migration 000031); tenant-scoped, FORCED RLS.
+MESSAGING_OUTBOX_TABLES: tuple[str, ...] = ("email_message",)
 
 
 def _jsonb() -> JSON:
@@ -56,6 +60,7 @@ class MessagingTables:
     consent_record: Table
     suppression_entry: Table
     delivery_receipt: Table
+    email_message: Table
 
 
 def build_messaging_tables(
@@ -140,6 +145,26 @@ def build_messaging_tables(
     Index("messaging_delivery_org_idx", delivery_receipt.c.organization_id)
     Index("messaging_delivery_campaign_idx", delivery_receipt.c.campaign_id)
 
+    # Durable transactional-email outbox / "dev mailbox" (migration 000031): the rendered message,
+    # delivery status and provider id for every transactional send — the admin Outbox reads this.
+    email_message = Table(
+        "email_message",
+        metadata,
+        Column("message_id", String, primary_key=True),
+        Column("organization_id", String, nullable=False),
+        Column("to_email", String, nullable=False),
+        Column("template_id", String, nullable=True),
+        Column("subject", String, nullable=False),
+        Column("html_body", Text, nullable=False),
+        Column("text_body", Text, nullable=False),
+        Column("status", String, nullable=False),
+        Column("provider_message_id", String, nullable=True),
+        Column("error", Text, nullable=True),
+        Column("created_at", DateTime(timezone=True), nullable=False),
+        schema=schema,
+    )
+    Index("messaging_email_message_org_idx", email_message.c.organization_id, email_message.c.created_at)
+
     return MessagingTables(
         schema=schema or MESSAGING_SCHEMA,
         template_version=template_version,
@@ -147,4 +172,5 @@ def build_messaging_tables(
         consent_record=consent_record,
         suppression_entry=suppression_entry,
         delivery_receipt=delivery_receipt,
+        email_message=email_message,
     )

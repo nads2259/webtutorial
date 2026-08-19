@@ -31,3 +31,9 @@ evidence/
 # Turborepo cache and per-package task logs
 .turbo/
 **/.turbo/
+
+# Local job ledgers, agent notes, and secret scratch files (never commit)
+curriculum-*-ledger.json
+curriculum-*-ledger-test.json
+WORKLOG.md
+models.txt

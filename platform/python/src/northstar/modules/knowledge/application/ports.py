@@ -11,7 +11,9 @@ adapter implements it now; an S3 adapter can replace it later without touching t
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from northstar.kernel.events.domain_event import DomainEvent
@@ -23,6 +25,28 @@ from ..domain.model import (
     Revision,
     TaxonomyAssignment,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogRow:
+    """A published-document catalog row for browse/list reads (title from the latest revision)."""
+
+    object_id: str
+    revision_id: str | None
+    title: str
+    summary: str | None
+    document_type: str
+    locale: str
+    terms: dict[str, list[str]] = field(default_factory=dict)
+    published_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TermCount:
+    """A distinct taxonomy term and how many documents carry it (for browse facets)."""
+
+    term: str
+    count: int
 
 
 @runtime_checkable
@@ -62,6 +86,41 @@ class KnowledgeRepositoryPort(Protocol):
     def list_taxonomy(
         self, *, organization_id: str, object_id: str
     ) -> Sequence[TaxonomyAssignment]: ...
+
+    def list_published(
+        self,
+        *,
+        organization_id: str,
+        filters: Mapping[str, str] = {},
+        limit: int = 200,
+        offset: int = 0,
+        title_query: str | None = None,
+        published_after: datetime | None = None,
+        published_before: datetime | None = None,
+        sort: str = "order",
+    ) -> Sequence[CatalogRow]:
+        """Published documents in this tenant, optionally filtered by taxonomy ``scheme=term``.
+
+        Ordered by the ``order`` taxonomy term (then title), or by latest publication time when
+        ``sort='recent'``. Title and published-at filters are applied in the database.
+        """
+        ...
+
+    def count_published(
+        self,
+        *,
+        organization_id: str,
+        filters: Mapping[str, str] = {},
+        title_query: str | None = None,
+        published_after: datetime | None = None,
+        published_before: datetime | None = None,
+    ) -> int:
+        """Count published documents matching the same filters as :meth:`list_published`."""
+        ...
+
+    def distinct_terms(self, *, organization_id: str, scheme: str) -> Sequence[TermCount]:
+        """Distinct taxonomy terms (with document counts) for ``scheme`` in this tenant."""
+        ...
 
 
 @runtime_checkable

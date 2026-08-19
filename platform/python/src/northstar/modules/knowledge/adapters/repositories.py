@@ -11,14 +11,16 @@ values.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import re
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import ColumnElement, Table, func, insert, select, update
 from sqlalchemy.orm import Session as SaSession
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql import Select
 
 from northstar.adapters.persistence_sqlalchemy.outbox import SqlAlchemyOutbox
 from northstar.adapters.persistence_sqlalchemy.runtime_tables import RUNTIME_TABLES, RuntimeTables
@@ -27,6 +29,7 @@ from northstar.adapters.persistence_sqlalchemy.unit_of_work import SqlAlchemyUni
 from northstar.kernel.context import Actor, ActorType
 from northstar.kernel.events.domain_event import DomainEvent
 
+from ..application.ports import CatalogRow, TermCount
 from ..domain.blocks import Block, ContentTree
 from ..domain.errors import ImmutableRevisionError
 from ..domain.model import (
@@ -129,6 +132,109 @@ class InMemoryKnowledgeRepository:
             for t in self._taxonomy.values()
             if t.object_id == object_id and t.organization_id == organization_id
         ]
+
+    def _terms_for(self, organization_id: str, object_id: str) -> dict[str, list[str]]:
+        grouped: dict[str, list[str]] = {}
+        for t in self._taxonomy.values():
+            if t.object_id == object_id and t.organization_id == organization_id:
+                grouped.setdefault(t.scheme, []).append(t.term)
+        return grouped
+
+    def list_published(
+        self,
+        *,
+        organization_id: str,
+        filters: Mapping[str, str] = {},
+        limit: int = 200,
+        offset: int = 0,
+        title_query: str | None = None,
+        published_after: datetime | None = None,
+        published_before: datetime | None = None,
+        sort: str = "order",
+    ) -> Sequence[CatalogRow]:
+        rows: list[tuple[str, datetime | None, CatalogRow]] = []
+        needle = (title_query or "").strip().lower()
+        for document in self._documents.values():
+            if document.organization_id != organization_id:
+                continue
+            if document.lifecycle is not Lifecycle.PUBLISHED:
+                continue
+            terms = self._terms_for(organization_id, document.object_id)
+            if any(term not in terms.get(scheme, []) for scheme, term in filters.items()):
+                continue
+            revision = (
+                self._revisions.get(document.latest_revision_id or "")
+                if document.latest_revision_id
+                else None
+            )
+            title = revision.title if revision else document.object_id
+            if needle and not _title_matches(title, needle):
+                continue
+            published_at = revision.created_at if revision is not None else None
+            if published_after is not None and (
+                published_at is None or published_at < published_after
+            ):
+                continue
+            if published_before is not None and (
+                published_at is None or published_at > published_before
+            ):
+                continue
+            order_key = (terms.get("order") or ["999999"])[0]
+            rows.append(
+                (
+                    order_key,
+                    published_at,
+                    CatalogRow(
+                        object_id=document.object_id,
+                        revision_id=document.latest_revision_id,
+                        title=title,
+                        summary=revision.summary if revision else None,
+                        document_type=document.document_type,
+                        locale=document.canonical_locale,
+                        terms=terms,
+                        published_at=published_at,
+                    ),
+                )
+            )
+        if sort == "recent":
+            rows.sort(
+                key=lambda pair: (
+                    0 if pair[1] is not None else 1,
+                    -(pair[1].timestamp()) if pair[1] is not None else 0,
+                    pair[2].title,
+                )
+            )
+        else:
+            rows.sort(key=lambda pair: (pair[0], pair[2].title))
+        return [row for _, _, row in rows[offset : offset + limit]]
+
+    def count_published(
+        self,
+        *,
+        organization_id: str,
+        filters: Mapping[str, str] = {},
+        title_query: str | None = None,
+        published_after: datetime | None = None,
+        published_before: datetime | None = None,
+    ) -> int:
+        return len(
+            self.list_published(
+                organization_id=organization_id,
+                filters=filters,
+                limit=10_000_000,
+                offset=0,
+                title_query=title_query,
+                published_after=published_after,
+                published_before=published_before,
+            )
+        )
+
+    def distinct_terms(self, *, organization_id: str, scheme: str) -> Sequence[TermCount]:
+        counts: dict[str, set[str]] = {}
+        for t in self._taxonomy.values():
+            if t.organization_id == organization_id and t.scheme == scheme:
+                counts.setdefault(t.term, set()).add(t.object_id)
+        return [TermCount(term=term, count=len(objs)) for term, objs in sorted(counts.items())]
 
 
 class SqlAlchemyKnowledgeRepository:
@@ -376,6 +482,243 @@ class SqlAlchemyKnowledgeRepository:
             )
             for r in rows
         ]
+
+    def list_published(
+        self,
+        *,
+        organization_id: str,
+        filters: Mapping[str, str] = {},
+        limit: int = 200,
+        offset: int = 0,
+        title_query: str | None = None,
+        published_after: datetime | None = None,
+        published_before: datetime | None = None,
+        sort: str = "order",
+    ) -> Sequence[CatalogRow]:
+        ko = self._tables.knowledge_object
+        rev = self._tables.revision
+        tax = self._tables.taxonomy_assignment
+        pub = self._tables.publication
+        with self._session_factory() as session:
+            set_tenant_guc(session, organization_id)
+            order_term, published_at = _catalog_order_columns(ko, tax, pub, organization_id)
+            stmt = _catalog_base_select(
+                ko, rev, order_term, published_at, organization_id=organization_id
+            )
+            stmt = _apply_catalog_filters(
+                stmt,
+                ko=ko,
+                rev=rev,
+                tax=tax,
+                pub=pub,
+                organization_id=organization_id,
+                filters=filters,
+                title_query=title_query,
+                published_after=published_after,
+                published_before=published_before,
+            )
+            if sort == "recent":
+                stmt = stmt.order_by(published_at.desc().nulls_last(), rev.c.title.asc())
+            else:
+                stmt = stmt.order_by(order_term.asc(), rev.c.title.asc())
+            stmt = stmt.limit(limit).offset(offset)
+            rows = session.execute(stmt).all()
+
+            object_ids = [r.object_id for r in rows]
+            terms_by_object: dict[str, dict[str, list[str]]] = {oid: {} for oid in object_ids}
+            if object_ids:
+                tax_rows = session.execute(
+                    select(tax.c.object_id, tax.c.scheme, tax.c.term).where(
+                        tax.c.organization_id == organization_id,
+                        tax.c.object_id.in_(object_ids),
+                    )
+                ).all()
+                for tr in tax_rows:
+                    terms_by_object.setdefault(tr.object_id, {}).setdefault(tr.scheme, []).append(
+                        tr.term
+                    )
+
+        return [
+            CatalogRow(
+                object_id=r.object_id,
+                revision_id=r.latest_revision_id,
+                title=r.title or r.object_id,
+                summary=r.summary,
+                document_type=r.document_type,
+                locale=r.canonical_locale,
+                terms=terms_by_object.get(r.object_id, {}),
+                published_at=_aware(r.published_at) if getattr(r, "published_at", None) else None,
+            )
+            for r in rows
+        ]
+
+    def count_published(
+        self,
+        *,
+        organization_id: str,
+        filters: Mapping[str, str] = {},
+        title_query: str | None = None,
+        published_after: datetime | None = None,
+        published_before: datetime | None = None,
+    ) -> int:
+        ko = self._tables.knowledge_object
+        rev = self._tables.revision
+        tax = self._tables.taxonomy_assignment
+        pub = self._tables.publication
+        with self._session_factory() as session:
+            set_tenant_guc(session, organization_id)
+            stmt = (
+                select(ko.c.object_id)
+                .select_from(ko.outerjoin(rev, rev.c.revision_id == ko.c.latest_revision_id))
+                .where(
+                    ko.c.organization_id == organization_id,
+                    ko.c.lifecycle == Lifecycle.PUBLISHED.value,
+                )
+            )
+            stmt = _apply_catalog_filters(
+                stmt,
+                ko=ko,
+                rev=rev,
+                tax=tax,
+                pub=pub,
+                organization_id=organization_id,
+                filters=filters,
+                title_query=title_query,
+                published_after=published_after,
+                published_before=published_before,
+            )
+            counted = session.execute(select(func.count()).select_from(stmt.subquery())).scalar()
+        return int(counted or 0)
+
+    def distinct_terms(self, *, organization_id: str, scheme: str) -> Sequence[TermCount]:
+        tax = self._tables.taxonomy_assignment
+        with self._session_factory() as session:
+            set_tenant_guc(session, organization_id)
+            rows = session.execute(
+                select(
+                    tax.c.term,
+                    func.count(func.distinct(tax.c.object_id)).label("cnt"),
+                )
+                .where(
+                    tax.c.organization_id == organization_id,
+                    tax.c.scheme == scheme,
+                )
+                .group_by(tax.c.term)
+                .order_by(tax.c.term.asc())
+            ).all()
+        return [TermCount(term=r.term, count=int(r.cnt)) for r in rows]
+
+
+def _like_pattern(raw: str) -> str:
+    escaped = raw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _title_matches(title: str, needle: str) -> bool:
+    """Case-insensitive title match; single tokens use word boundaries (so RAG ≠ Storage)."""
+    if _TOKEN_RE.fullmatch(needle):
+        return re.search(rf"\b{re.escape(needle)}\b", title, flags=re.IGNORECASE) is not None
+    return needle.lower() in title.lower()
+
+
+def _title_filter(column: ColumnElement[object], raw: str) -> ColumnElement[bool]:
+    if _TOKEN_RE.fullmatch(raw):
+        return column.op("~*")(rf"\m{re.escape(raw)}\M")
+    return column.ilike(_like_pattern(raw), escape="\\")
+
+
+def _catalog_order_columns(
+    ko: Table, tax: Table, pub: Table, organization_id: str
+) -> tuple[ColumnElement[object], ColumnElement[object]]:
+    order_term = (
+        select(tax.c.term)
+        .where(
+            tax.c.object_id == ko.c.object_id,
+            tax.c.organization_id == organization_id,
+            tax.c.scheme == "order",
+        )
+        .limit(1)
+        .scalar_subquery()
+    )
+    published_at = (
+        select(func.max(pub.c.published_at))
+        .where(
+            pub.c.object_id == ko.c.object_id,
+            pub.c.organization_id == organization_id,
+        )
+        .scalar_subquery()
+    )
+    return order_term, published_at
+
+
+def _catalog_base_select(
+    ko: Table,
+    rev: Table,
+    order_term: ColumnElement[object],
+    published_at: ColumnElement[object],
+    *,
+    organization_id: str,
+) -> Select[tuple[object, ...]]:
+    return (
+        select(
+            ko.c.object_id,
+            ko.c.latest_revision_id,
+            ko.c.document_type,
+            ko.c.canonical_locale,
+            rev.c.title,
+            rev.c.summary,
+            order_term.label("order_term"),
+            published_at.label("published_at"),
+        )
+        .select_from(ko.outerjoin(rev, rev.c.revision_id == ko.c.latest_revision_id))
+        .where(
+            ko.c.organization_id == organization_id,
+            ko.c.lifecycle == Lifecycle.PUBLISHED.value,
+        )
+    )
+
+
+def _apply_catalog_filters(
+    stmt: Select[tuple[object, ...]],
+    *,
+    ko: Table,
+    rev: Table,
+    tax: Table,
+    pub: Table,
+    organization_id: str,
+    filters: Mapping[str, str],
+    title_query: str | None,
+    published_after: datetime | None,
+    published_before: datetime | None,
+) -> Select[tuple[object, ...]]:
+    for scheme, term in filters.items():
+        exists_q = (
+            select(tax.c.assignment_id)
+            .where(
+                tax.c.object_id == ko.c.object_id,
+                tax.c.organization_id == organization_id,
+                tax.c.scheme == scheme,
+                tax.c.term == term,
+            )
+            .exists()
+        )
+        stmt = stmt.where(exists_q)
+    if title_query:
+        stmt = stmt.where(_title_filter(rev.c.title, title_query))
+    if published_after is not None or published_before is not None:
+        pub_exists = select(pub.c.publication_id).where(
+            pub.c.object_id == ko.c.object_id,
+            pub.c.organization_id == organization_id,
+        )
+        if published_after is not None:
+            pub_exists = pub_exists.where(pub.c.published_at >= published_after)
+        if published_before is not None:
+            pub_exists = pub_exists.where(pub.c.published_at <= published_before)
+        stmt = stmt.where(pub_exists.exists())
+    return stmt
 
 
 def _aware(value: datetime) -> datetime:

@@ -1,0 +1,33 @@
+# First-party module manifest (manifest 1.0). Validates against
+# spec/contracts/schemas/module-manifest.schema.json. Framework compatibility is >=0.3.0 <1.0.0.
+manifest_version: "1.0"
+module_id: northstar.assistant
+name: Northstar Assistant
+version: 0.3.0
+description: >-
+  A retrieval-grounded Q&A assistant wired to an external OpenAI-compatible chat model. The single
+  authoritative action assistant.ask grounds the learner's question in indexed curriculum passages
+  (via the released retrieval.search capability) and asks a configured, admin-selectable model,
+  returning the answer plus sources. The chat model is a swappable adapter behind ChatModelPort;
+  credentials are read from the environment.
+owner: Learning Platform Guild
+maturity: experimental
+framework_compatibility:
+  minimum: 0.3.0
+  maximum_exclusive: 1.0.0
+  contract_api: 0.3.0
+dependencies:
+  - northstar.retrieval
+capabilities:
+  - assistant.ask
+produced_events: []
+data_ownership:
+  postgres_schemas:
+    - northstar_assistant
+  object_prefixes: []
+  classifications:
+    - public
+lifecycle:
+  migrations: true
+  health_checks: []
+  uninstall_policy: retain

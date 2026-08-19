@@ -300,6 +300,12 @@ def create_annotation_router() -> APIRouter:
                         "current_revision_id": view.current_revision_id,
                         "thread_id": view.thread_id,
                         "parent_annotation_id": view.parent_annotation_id,
+                        "body_type": view.body_type,
+                        "body_content": view.body_content,
+                        "body_locale": view.body_locale,
+                        "creator_id": view.creator_id,
+                        "creator_type": view.creator_type,
+                        "created_at": view.created_at,
                     }
                     for view in listed.annotations
                 ],

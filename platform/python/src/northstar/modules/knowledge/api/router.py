@@ -9,32 +9,37 @@ isolation). Policy denials surface as ``403 application/problem+json``; typed do
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from northstar.kernel.context import RequestContext, ResourceRef
+from northstar.kernel.context import Actor, ActorType, RequestContext, ResourceRef
 from northstar.kernel.errors import KernelError, PolicyDenied
 from northstar.kernel.messaging import Command, CommandBus, Query, QueryBus
 
 from ..application.capabilities import (
     CAP_ASSIGN_TAXONOMY,
+    CAP_BROWSE_DOCUMENTS,
     CAP_CREATE_DOCUMENT,
     CAP_EDIT_DRAFT,
     CAP_GET_DOCUMENT,
     CAP_GET_REVISION,
     CAP_PUBLISH_DOCUMENT,
     CAP_SUBMIT_FOR_REVIEW,
+    CAP_TAXONOMY_TERMS,
     CAP_VERSION,
     AssignTaxonomyCommand,
+    BrowseDocumentsQuery,
     CreateDocumentCommand,
     EditDraftCommand,
     GetDocumentQuery,
     GetRevisionQuery,
     PublishDocumentCommand,
     SubmitForReviewCommand,
+    TaxonomyTermsQuery,
 )
 from ..domain.model import RES_DOCUMENT
 
@@ -51,6 +56,9 @@ class KnowledgeApiDependencies:
     command_bus: CommandBus
     query_bus: QueryBus
     authenticate: Authenticator
+    # When set, unauthenticated READ requests are served as an anonymous viewer scoped to this
+    # tenant (public, crawlable published content for SEO). Writes always require a session.
+    public_tenant: str | None = None
 
 
 def bind_knowledge_dependencies(app_state: object, deps: KnowledgeApiDependencies) -> None:
@@ -81,6 +89,17 @@ def _doc_resource(object_id: str) -> ResourceRef:
     return ResourceRef(type=RES_DOCUMENT, id=object_id)
 
 
+def _int(value: str | None, default: int) -> int:
+    try:
+        return int(value) if value is not None else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _flag(value: str | None) -> bool:
+    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def create_knowledge_router() -> APIRouter:
     """Build the ``/knowledge`` router (dependencies read from ``app.state``)."""
     router = APIRouter(prefix="/knowledge", tags=["knowledge"])
@@ -93,6 +112,20 @@ def create_knowledge_router() -> APIRouter:
 
     def _auth(request: Request) -> RequestContext | None:
         return _deps(request).authenticate(request)
+
+    def _read_ctx(request: Request) -> RequestContext | None:
+        """Authenticated context if present, else an anonymous public-tenant viewer (for SEO)."""
+        context = _auth(request)
+        if context is not None:
+            return context
+        public = _deps(request).public_tenant
+        if public:
+            return RequestContext(
+                actor=Actor(type=ActorType.ANONYMOUS, id="anonymous"),
+                correlation_id=f"pub_{uuid.uuid4().hex}",
+                tenant_scope=public,
+            )
+        return None
 
     @router.post("")
     async def create_document(request: Request) -> JSONResponse:
@@ -246,10 +279,126 @@ def create_knowledge_router() -> APIRouter:
             },
         )
 
+    @router.get("/catalog")
+    def browse_catalog(request: Request) -> JSONResponse:
+        deps = _deps(request)
+        context = _read_ctx(request)
+        if context is None:
+            return _problem(401, "authentication.required", "Authentication is required", "-")
+        params = request.query_params
+        query = Query(
+            capability=CAP_BROWSE_DOCUMENTS,
+            version=CAP_VERSION,
+            parameters=BrowseDocumentsQuery(
+                category=params.get("category") or None,
+                module=params.get("module") or None,
+                kind=params.get("kind") or None,
+                subject=params.get("subject") or None,
+                phase=params.get("phase") or None,
+                phase_title=params.get("phase_title") or None,
+                q=params.get("q") or None,
+                published_after=params.get("published_after") or None,
+                published_before=params.get("published_before") or None,
+                sort=params.get("sort") or "order",
+                include_total=_flag(params.get("include_total")),
+                limit=_int(params.get("limit"), 200),
+                offset=_int(params.get("offset"), 0),
+            ),
+        )
+        try:
+            result = deps.query_bus.dispatch(query, context)
+        except PolicyDenied:
+            return _problem(403, "authorization.denied", "Access denied", context.correlation_id)
+        except KernelError as exc:
+            return _problem(422, "knowledge.invalid", str(exc), context.correlation_id)
+        view = result.value
+        payload: dict[str, object] = {
+            "entries": [
+                {
+                    "object_id": e.object_id,
+                    "revision_id": e.revision_id,
+                    "title": e.title,
+                    "summary": e.summary,
+                    "document_type": e.document_type,
+                    "locale": e.locale,
+                    "terms": e.terms,
+                    "published_at": e.published_at,
+                }
+                for e in view.entries
+            ]
+        }
+        if view.total is not None:
+            payload["total"] = view.total
+        return JSONResponse(status_code=200, content=payload)
+
+    @router.get("/lesson-index")
+    def lesson_index(request: Request) -> JSONResponse:
+        """A compact ``lesson_id -> {r: revision_id, t: title}`` map for cross-reference hyperlinks.
+
+        Built live from the current published documents (public tenant), so links always resolve to
+        the latest revision. Read-only + cacheable by the client.
+        """
+        deps = _deps(request)
+        context = _read_ctx(request)
+        if context is None:
+            return _problem(401, "authentication.required", "Authentication is required", "-")
+        lessons: dict[str, dict[str, str]] = {}
+        offset = 0
+        page = 1000
+        while True:
+            query = Query(
+                capability=CAP_BROWSE_DOCUMENTS,
+                version=CAP_VERSION,
+                parameters=BrowseDocumentsQuery(limit=page, offset=offset),
+            )
+            try:
+                result = deps.query_bus.dispatch(query, context)
+            except PolicyDenied:
+                return _problem(
+                    403, "authorization.denied", "Access denied", context.correlation_id
+                )
+            entries = result.value.entries
+            if not entries:
+                break
+            for e in entries:
+                lesson_id = (e.terms.get("lesson") or [None])[0]
+                if lesson_id and e.revision_id:
+                    lessons[str(lesson_id).upper()] = {"r": e.revision_id, "t": e.title}
+            if len(entries) < page:
+                break
+            offset += page
+        return JSONResponse(status_code=200, content={"lessons": lessons})
+
+    @router.get("/taxonomy/{scheme}")
+    def taxonomy_terms(scheme: str, request: Request) -> JSONResponse:
+        deps = _deps(request)
+        context = _read_ctx(request)
+        if context is None:
+            return _problem(401, "authentication.required", "Authentication is required", "-")
+        query = Query(
+            capability=CAP_TAXONOMY_TERMS,
+            version=CAP_VERSION,
+            parameters=TaxonomyTermsQuery(scheme=scheme),
+        )
+        try:
+            result = deps.query_bus.dispatch(query, context)
+        except PolicyDenied:
+            return _problem(403, "authorization.denied", "Access denied", context.correlation_id)
+        except KernelError as exc:
+            return _problem(422, "knowledge.invalid", str(exc), context.correlation_id)
+        view = result.value
+        return JSONResponse(
+            status_code=200,
+            content={
+                "scheme": view.scheme,
+                "terms": [{"term": t.term, "count": t.count} for t in view.terms],
+            },
+        )
+
     @router.get("/revisions/{revision_id}")
     def get_revision(revision_id: str, request: Request) -> JSONResponse:
         deps = _deps(request)
-        context = _auth(request)
+        context = _read_ctx(request)
         if context is None:
             return _problem(401, "authentication.required", "Authentication is required", "-")
         query = Query(
@@ -280,7 +429,7 @@ def create_knowledge_router() -> APIRouter:
     @router.get("/{object_id}")
     def get_document(object_id: str, request: Request) -> JSONResponse:
         deps = _deps(request)
-        context = _auth(request)
+        context = _read_ctx(request)
         if context is None:
             return _problem(401, "authentication.required", "Authentication is required", "-")
         query = Query(

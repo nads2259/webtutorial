@@ -4,6 +4,19 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
+  server: {
+    proxy: {
+      // Same-origin API access in dev so the ns_session cookie stays on the app origin.
+      "/api": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ""),
+      },
+      // SEO endpoints served from the site root (proxied to the API, no rewrite).
+      "/sitemap.xml": { target: "http://localhost:8000", changeOrigin: true },
+      "/robots.txt": { target: "http://localhost:8000", changeOrigin: true },
+    },
+  },
   resolve: {
     alias: {
       "@northstar/design-tokens": resolve(import.meta.dirname, "../../packages/design-tokens/src"),

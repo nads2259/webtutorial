@@ -50,6 +50,17 @@ def _aware(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
+def _row_to_template(row: object) -> TemplateVersion:
+    return TemplateVersion(
+        template_id=row.template_id,  # type: ignore[attr-defined]
+        version=row.version,  # type: ignore[attr-defined]
+        subject=row.subject,  # type: ignore[attr-defined]
+        html_body=row.html_body,  # type: ignore[attr-defined]
+        text_body=row.text_body,  # type: ignore[attr-defined]
+        required_variables=tuple(row.required_variables or ()),  # type: ignore[attr-defined]
+    )
+
+
 # ---------------------------------------------------------------------------
 # In-memory repository (fast, deterministic unit/security tests)
 # ---------------------------------------------------------------------------
@@ -75,6 +86,25 @@ class InMemoryMessagingRepository:
         self, *, organization_id: str, template_id: str, version: int
     ) -> TemplateVersion | None:
         return self._templates.get((organization_id, template_id, version))
+
+    def get_latest_template(
+        self, *, organization_id: str, template_id: str
+    ) -> TemplateVersion | None:
+        versions = [
+            t
+            for (org, tid, _v), t in self._templates.items()
+            if org == organization_id and tid == template_id
+        ]
+        return max(versions, key=lambda t: t.version) if versions else None
+
+    def list_templates(self, *, organization_id: str) -> Sequence[TemplateVersion]:
+        latest: dict[str, TemplateVersion] = {}
+        for (org, tid, _v), t in self._templates.items():
+            if org != organization_id:
+                continue
+            if tid not in latest or t.version > latest[tid].version:
+                latest[tid] = t
+        return sorted(latest.values(), key=lambda t: t.template_id)
 
     def add_campaign(self, *, organization_id: str, campaign: Campaign) -> None:
         self._campaigns[(organization_id, campaign.campaign_id)] = campaign
@@ -193,14 +223,39 @@ class SqlAlchemyMessagingRepository:
             ).first()
         if row is None:
             return None
-        return TemplateVersion(
-            template_id=row.template_id,
-            version=row.version,
-            subject=row.subject,
-            html_body=row.html_body,
-            text_body=row.text_body,
-            required_variables=tuple(row.required_variables or ()),
-        )
+        return _row_to_template(row)
+
+    def get_latest_template(
+        self, *, organization_id: str, template_id: str
+    ) -> TemplateVersion | None:
+        table = self._tables.template_version
+        with self._session_factory() as session:
+            set_tenant_guc(session, organization_id)
+            row = session.execute(
+                select(table)
+                .where(
+                    table.c.organization_id == organization_id,
+                    table.c.template_id == template_id,
+                )
+                .order_by(table.c.version.desc())
+                .limit(1)
+            ).first()
+        return None if row is None else _row_to_template(row)
+
+    def list_templates(self, *, organization_id: str) -> Sequence[TemplateVersion]:
+        table = self._tables.template_version
+        with self._session_factory() as session:
+            set_tenant_guc(session, organization_id)
+            rows = session.execute(
+                select(table)
+                .where(table.c.organization_id == organization_id)
+                .order_by(table.c.template_id, table.c.version.desc())
+            ).all()
+        latest: dict[str, TemplateVersion] = {}
+        for row in rows:
+            if row.template_id not in latest:
+                latest[row.template_id] = _row_to_template(row)
+        return list(latest.values())
 
     # Campaigns ----------------------------------------------------------
     def add_campaign(self, *, organization_id: str, campaign: Campaign) -> None:

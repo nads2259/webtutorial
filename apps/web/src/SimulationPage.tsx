@@ -1,8 +1,8 @@
-import { color, motion, size, space, type as typeTokens } from "@northstar/design-tokens";
-import { Link, VisuallyHidden } from "@northstar/ui-primitives";
-import type { CSSProperties } from "react";
 import { useEffect, useRef } from "react";
 import { SimulationRunner } from "./SimulationRunner";
+import { SiteFooter } from "./components/SiteFooter";
+import { SiteHeader } from "./components/SiteHeader";
+import { SkipLink } from "./components/SkipLink";
 import { referenceSimulation } from "./simulation/reference-simulation";
 
 /**
@@ -12,84 +12,50 @@ import { referenceSimulation } from "./simulation/reference-simulation";
  * {@link SimulationRunner}. No real runtime executes here (IMPL-016 owns that).
  */
 
-const skipLinkStyle: CSSProperties = {
-  position: "absolute",
-  left: space.sm,
-  top: space.sm,
-  padding: space.sm,
-  background: color.surface,
-  color: color.primary,
-  border: `${size.focusRingWidthPx}px solid ${color.focusRing}`,
-  borderRadius: 4,
-  transform: "translateY(-200%)",
-  transition: `transform ${motion.durationFastMs}ms ${motion.easingStandard}`,
-  zIndex: 10,
-};
-
-const shellStyle: CSSProperties = {
-  fontFamily: typeTokens.fontFamily,
-  fontSize: typeTokens.baseSizePx,
-  lineHeight: typeTokens.lineHeight,
-  color: color.text,
-  background: color.surface,
-  minHeight: "100vh",
-};
-
-const contentStyle: CSSProperties = {
-  maxWidth: 820,
-  margin: "0 auto",
-  padding: space.lg,
-  boxSizing: "border-box",
-};
-
 export function SimulationPage(): React.JSX.Element {
   const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    document.title = "Simulation runner — Northstar Knowledge";
+    document.title = "Simulation runner — Bestinfopages";
     mainRef.current?.focus();
   }, []);
 
   return (
-    <div style={shellStyle}>
-      <a href="#simulation-main" style={skipLinkStyle} data-testid="skip-link">
-        Skip to simulation
-      </a>
-      <header>
-        <nav aria-label="Primary">
-          <ul>
-            <li>
-              <Link href="#/">Read</Link>
-            </li>
-            <li>
-              <Link href="#/authoring">Author</Link>
-            </li>
-            <li>
-              <Link href="#/simulation">Simulation</Link>
-            </li>
-          </ul>
-        </nav>
-      </header>
+    <div className="ns-shell">
+      <SkipLink target="simulation-main">Skip to simulation</SkipLink>
+      <SiteHeader
+        items={[
+          { label: "Read", href: "#/" },
+          { label: "Author", href: "#/authoring" },
+          { label: "Simulation", href: "#/simulation", current: true },
+        ]}
+        cta={{ label: "Get started", href: "#/authoring" }}
+      />
       <main
         id="simulation-main"
         ref={mainRef}
         tabIndex={-1}
-        style={contentStyle}
+        className="ns-main ns-main--wide"
         aria-labelledby="simulation-title"
       >
+        <div className="bip-kicker">
+          <span className="bip-chip bip-chip--sim">Interactive drill</span>
+          <span className="bip-meta-sep" aria-hidden="true" />
+          <span>Incident response</span>
+        </div>
         <h1 id="simulation-title">Simulation runner</h1>
         <p>
           Work through the reference incident-response drill. Every control is keyboard operable and
           a text-only equivalent of the whole scenario is available.
         </p>
-        <SimulationRunner definition={referenceSimulation} />
+        <div className="ns-panel">
+          <SimulationRunner definition={referenceSimulation} />
+        </div>
       </main>
-      <footer>
-        <p>
-          <VisuallyHidden>Footer: </VisuallyHidden>
-          Northstar simulation environment.
-        </p>
-      </footer>
+      <SiteFooter>
+        Bestinfopages interactive simulations — keyboard-operable drills with a full text-only
+        equivalent.
+      </SiteFooter>
     </div>
   );
 }

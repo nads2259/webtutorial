@@ -42,6 +42,17 @@ from northstar.adapters.telemetry_otel import (
     build_tracer_provider,
     instrument_fastapi_app,
 )
+from northstar.adapters.persistence_sqlalchemy.audit_recorder import SqlAlchemyAuditRecorder
+from northstar.processes.api.admin import (
+    AdminApiDependencies,
+    bind_admin_dependencies,
+    create_admin_router,
+)
+from northstar.processes.api.seo import (
+    SeoDependencies,
+    bind_seo_dependencies,
+    create_seo_router,
+)
 from northstar.kernel.audit import InMemoryAuditRecorder
 from northstar.kernel.capabilities import (
     CapabilityDispatcher,
@@ -180,6 +191,12 @@ from northstar.modules.identity.adapters.mfa_repositories import (
     SqlAlchemyWebAuthnCredentialStore,
 )
 from northstar.modules.identity.adapters.mock_oidc_provider import MockOidcProvider
+from northstar.modules.identity.adapters.local_auth import (
+    ScryptPasswordHasher,
+    SqlAlchemyAccountEventStore,
+    SqlAlchemyLocalAccountStore,
+    SqlAlchemyVerificationTokenStore,
+)
 from northstar.modules.identity.adapters.sqlalchemy_repositories import (
     SqlAlchemyIdentityDirectory,
     SqlAlchemySessionStore,
@@ -192,9 +209,37 @@ from northstar.modules.identity.api import (
     bind_identity_dependencies,
     create_identity_router,
 )
+from northstar.modules.identity.api.mock_idp import (
+    MockIdpDependencies,
+    bind_mock_idp_dependencies,
+    create_mock_idp_router,
+)
 from northstar.modules.identity.application import capabilities as ident
+from northstar.modules.identity.application import local_auth
 from northstar.modules.identity.application import impersonation, mfa
 from northstar.modules.knowledge.adapters.repositories import SqlAlchemyKnowledgeRepository
+from northstar.modules.assistant.adapters.openai_compatible import OpenAICompatibleChatModel
+from northstar.modules.assistant.adapters.retrieval_gateway import (
+    BusRetrievalGateway as AssistantRetrievalGateway,
+)
+from northstar.modules.assistant.api.router import (
+    AssistantApiDependencies,
+    bind_assistant_dependencies,
+    create_assistant_router,
+)
+from northstar.modules.assistant.adapters.settings_store import SqlAlchemyAssistantSettings
+from northstar.modules.assistant.adapters.tables import build_assistant_tables
+from northstar.modules.assistant.application import capabilities as assistant
+from northstar.modules.assistant.application.config import default_store as assistant_default_store
+from northstar.modules.codelab.adapters.repositories import SqlAlchemyCodeRunStore
+from northstar.modules.codelab.adapters.sandbox import SubprocessSandbox
+from northstar.modules.codelab.adapters.tables import build_codelab_tables
+from northstar.modules.codelab.api.router import (
+    CodelabApiDependencies,
+    bind_codelab_dependencies,
+    create_codelab_router,
+)
+from northstar.modules.codelab.application import capabilities as codelab
 from northstar.modules.knowledge.adapters.tables import build_knowledge_tables
 from northstar.modules.knowledge.api import (
     KnowledgeApiDependencies,
@@ -225,6 +270,9 @@ from northstar.modules.media.api import (
     create_media_router,
 )
 from northstar.modules.media.application import capabilities as media
+from northstar.modules.messaging.adapters.email_bridge import MessagingEmailSender
+from northstar.modules.messaging.adapters.email_delivery import email_delivery_from_env
+from northstar.modules.messaging.adapters.email_outbox import SqlAlchemyEmailOutbox
 from northstar.modules.messaging.adapters.provider import InMemoryMessageProvider
 from northstar.modules.messaging.adapters.repositories import SqlAlchemyMessagingRepository
 from northstar.modules.messaging.adapters.tables import build_messaging_tables
@@ -235,6 +283,8 @@ from northstar.modules.messaging.api import (
     create_messaging_router,
 )
 from northstar.modules.messaging.application import capabilities as messaging
+from northstar.modules.messaging.application import transactional as messaging_tx
+from northstar.modules.messaging.application.transactional import TransactionalEmailService
 from northstar.modules.moderation.adapters.enforcement import (
     AnnotationEnforcementGateway,
     AnnotationModerationGateway,
@@ -405,12 +455,16 @@ class _Composition:
 
     dependencies: AppDependencies
     identity: IdentityApiDependencies
+    mock_idp: MockIdpDependencies
     organization: OrganizationApiDependencies
     governance_studio: GovernanceStudioApiDependencies
     knowledge: KnowledgeApiDependencies
+    codelab: CodelabApiDependencies
     annotation: AnnotationApiDependencies
     retrieval: RetrievalApiDependencies
     ai: AiApiDependencies
+    assistant: AssistantApiDependencies
+    admin: AdminApiDependencies
     research: ResearchApiDependencies
     simulation: SimulationApiDependencies
     extension: ExtensionApiDependencies
@@ -427,20 +481,46 @@ class _Composition:
     messaging_webhook: GuardedWebhookDelivery
 
 
+def _dev_idp_enabled() -> bool:
+    """Dev IdP is on by default so login is runnable locally; disable with NORTHSTAR_DEV_IDP=0."""
+    return os.environ.get("NORTHSTAR_DEV_IDP", "1") != "0"
+
+
+def _default_tenant() -> str:
+    return os.environ.get("NORTHSTAR_DEFAULT_TENANT", "org-bestinfopages")
+
+
+def _app_base_url() -> str:
+    """Public base URL of the web app, used to build email confirm/reset links."""
+    return os.environ.get("NORTHSTAR_APP_BASE_URL", "http://localhost:5173").rstrip("/")
+
+
 def _register_identity(
     *,
     registry: CapabilityRegistry,
     policy: LayeredPolicyEvaluator,
     session_factory: sessionmaker[Session],
-) -> SqlAlchemySessionStore:
-    """Register the identity capabilities and grants; return the shared session store.
+    email_sender: object,
+    app_base_url: str,
+    tenant: str,
+) -> tuple[SqlAlchemySessionStore, MockOidcProvider]:
+    """Register the identity capabilities and grants; return the session store + OIDC provider.
 
     Provider note: the reference wiring uses the deterministic :class:`MockOidcProvider`. A real
     deployment injects a configured OIDC IdP adapter (issuer/audience/JWKS from the secret manager)
-    behind the same ``OidcProviderPort`` — no identity-core change is required (FR-IDN-006).
+    behind the same ``OidcProviderPort`` — no identity-core change is required (FR-IDN-006). When the
+    dev IdP is enabled, the provider's authorization endpoint points at the mounted mock login page
+    so the full Authorization-Code + PKCE flow runs locally; new subjects are provisioned into the
+    default tenant so they can immediately read the seeded curriculum.
     """
     tables = build_identity_tables(MetaData())
-    provider = MockOidcProvider()
+    if _dev_idp_enabled():
+        authorize_url = os.environ.get(
+            "NORTHSTAR_MOCK_IDP_AUTHORIZE_URL", "/api/auth/mock-idp/authorize"
+        )
+        provider = MockOidcProvider(authorization_endpoint=authorize_url)
+    else:
+        provider = MockOidcProvider()
     transactions = InMemoryAuthTransactionStore()
     directory = SqlAlchemyIdentityDirectory(
         session_factory=session_factory, tables=tables, id_factory=_uuid, clock=_utc_now
@@ -469,6 +549,7 @@ def _register_identity(
             clock=_utc_now,
             id_factory=_uuid,
             token_factory=new_session_token,
+            tenant_scope=_default_tenant(),
         ),
     )
     registry.register(
@@ -608,12 +689,80 @@ def _register_identity(
         impersonation.ResolveBreakGlassReview(repository=impersonation_repo, clock=_utc_now),
     )
 
+    # Local (email + password) auth: a parallel first-factor path that mints the SAME session as
+    # OIDC (docs/07 §4). Confirmation + reset use single-use expiring tokens; every step writes a
+    # durable account_event for the Activity feed. Email goes through the injected transactional
+    # sender (identity depends only on a port; LAW-13).
+    local_accounts = SqlAlchemyLocalAccountStore(
+        session_factory=session_factory, tables=tables, id_factory=_uuid, clock=_utc_now
+    )
+    local_tokens = SqlAlchemyVerificationTokenStore(session_factory=session_factory, tables=tables)
+    account_events = SqlAlchemyAccountEventStore(session_factory=session_factory, tables=tables)
+    local_common = {
+        "accounts": local_accounts,
+        "hasher": ScryptPasswordHasher(),
+        "tokens": local_tokens,
+        "events": account_events,
+        "email": email_sender,
+        "clock": _utc_now,
+        "id_factory": _uuid,
+        "token_factory": new_session_token,
+        "tenant_scope": tenant,
+        "app_base_url": app_base_url,
+    }
+    registry.register(
+        local_auth.CAP_LOCAL_REGISTER,
+        ident.CAP_VERSION,
+        local_auth.RegisterLocalUser(**local_common),
+    )
+    registry.register(
+        local_auth.CAP_LOCAL_CONFIRM_EMAIL,
+        ident.CAP_VERSION,
+        local_auth.ConfirmEmail(**local_common),
+    )
+    registry.register(
+        local_auth.CAP_LOCAL_LOGIN,
+        ident.CAP_VERSION,
+        local_auth.LoginLocalUser(sessions=session_store, **local_common),
+    )
+    registry.register(
+        local_auth.CAP_LOCAL_REQUEST_RESET,
+        ident.CAP_VERSION,
+        local_auth.RequestPasswordReset(**local_common),
+    )
+    registry.register(
+        local_auth.CAP_LOCAL_RESET_PASSWORD,
+        ident.CAP_VERSION,
+        local_auth.ResetPassword(**local_common),
+    )
+    registry.register(
+        local_auth.CAP_LOCAL_RESEND_CONFIRMATION,
+        ident.CAP_VERSION,
+        local_auth.ResendConfirmation(**local_common),
+    )
+    registry.register(
+        local_auth.CAP_ACTIVITY_LIST,
+        ident.CAP_VERSION,
+        local_auth.ListActivity(events=account_events),
+    )
+    registry.register(
+        local_auth.CAP_ACTIVITY_ADMIN_LIST,
+        ident.CAP_VERSION,
+        local_auth.ListAdminActivity(events=account_events),
+    )
+
     # Deny-by-default grants: the anonymous edge may only begin/complete authentication; the
     # session actions are authorized for any authenticated actor on the identity.session resource
     # (the router has already validated the session cookie before reaching the bus).
     anonymous = frozenset({"anonymous"})
     policy.grant(PolicyGrant(action=ident.CAP_BEGIN_AUTHENTICATION, actor_ids=anonymous))
     policy.grant(PolicyGrant(action=ident.CAP_COMPLETE_AUTHENTICATION, actor_ids=anonymous))
+    # Local-auth entry points are anonymous; the activity queries are for any authenticated actor
+    # (the router validates the session cookie first).
+    for action in local_auth.LOCAL_AUTH_ANONYMOUS_CAPABILITIES:
+        policy.grant(PolicyGrant(action=action, actor_ids=anonymous))
+    policy.grant(PolicyGrant(action=local_auth.CAP_ACTIVITY_LIST))
+    policy.grant(PolicyGrant(action=local_auth.CAP_ACTIVITY_ADMIN_LIST))
     for action in (
         ident.CAP_DESCRIBE_SESSION,
         ident.CAP_ROTATE_SESSION,
@@ -641,7 +790,7 @@ def _register_identity(
     for action in impersonation.IMPERSONATION_CAPABILITIES:
         policy.grant(PolicyGrant(action=action))
 
-    return session_store
+    return session_store, provider
 
 
 def _register_entitlement(
@@ -755,7 +904,48 @@ def _register_knowledge(
         knowledge.CAP_VERSION,
         knowledge.AssignTaxonomy(repository=repository, id_factory=_uuid),
     )
+    registry.register(
+        knowledge.CAP_BROWSE_DOCUMENTS,
+        knowledge.CAP_VERSION,
+        knowledge.BrowseDocuments(repository=repository),
+    )
+    registry.register(
+        knowledge.CAP_TAXONOMY_TERMS,
+        knowledge.CAP_VERSION,
+        knowledge.TaxonomyTerms(repository=repository),
+    )
     for action in knowledge.KNOWLEDGE_CAPABILITIES:
+        policy.grant(PolicyGrant(action=action))
+
+
+def _register_codelab(
+    *,
+    registry: CapabilityRegistry,
+    policy: LayeredPolicyEvaluator,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """Register codelab capabilities + deny-by-default grants (LAW-04).
+
+    ``codelab.run.execute`` runs untrusted code behind the :class:`CodeSandboxPort` (a locked-down
+    subprocess in the reference adapter) and records an IMMUTABLE, tenant-scoped ``code_run`` through
+    the store — so every learner execution is durably tracked AND audited by the command bus. Tenant
+    isolation is enforced inside the capability (scope from the authenticated context, never the
+    payload — rule 50); the explicit grants authorize these actions for any authenticated actor.
+    """
+    tables = build_codelab_tables(MetaData())
+    store = SqlAlchemyCodeRunStore(session_factory=session_factory, tables=tables)
+    sandbox = SubprocessSandbox()
+    registry.register(
+        codelab.CAP_RUN,
+        codelab.CAP_VERSION,
+        codelab.RunCode(sandbox=sandbox, store=store, clock=_utc_now, id_factory=_uuid),
+    )
+    registry.register(
+        codelab.CAP_LIST_RUNS,
+        codelab.CAP_VERSION,
+        codelab.ListRuns(store=store),
+    )
+    for action in codelab.CODELAB_CAPABILITIES:
         policy.grant(PolicyGrant(action=action))
 
 
@@ -2044,7 +2234,9 @@ def _compose(*, database_url: str | None = None, tracer: TracerPort | None = Non
     session_factory = create_session_factory(engine)
     registry = CapabilityRegistry()
     dispatcher = CapabilityDispatcher(registry)
-    audit = InMemoryAuditRecorder()
+    # Durable audit sink (LAW-14): persists every sealed record to northstar_audit.audit_record and
+    # still exposes the in-memory trail the Studio explorer reads (subclass of InMemoryAuditRecorder).
+    audit = SqlAlchemyAuditRecorder(session_factory=session_factory)
     # Shared deny-by-default egress guard: every outbound HTTP surface (AI fetch tools, webhook
     # delivery) routes through it, extending the simulation sandbox's isolation platform-wide
     # (EVAL-SEC-005). It resolves DNS and audits a refusal; the policy it consumes is pure.
@@ -2068,10 +2260,85 @@ def _compose(*, database_url: str | None = None, tracer: TracerPort | None = Non
         resources=resource_resolver,
         entitlements=entitlement_service,
     )
-    session_store = _register_identity(
-        registry=registry, policy=policy, session_factory=session_factory
+    # Transactional email (confirmation/reset) + durable outbox + admin-managed templates. Built
+    # before identity so the local-auth capabilities can email through a port (LAW-13). The dev
+    # mailbox records every email durably; a real SMTP provider is used when NORTHSTAR_SMTP_HOST is
+    # configured (email_delivery_from_env).
+    tx_messaging_tables = build_messaging_tables(MetaData())
+    tx_messaging_repo = SqlAlchemyMessagingRepository(
+        session_factory=session_factory, tables=tx_messaging_tables
     )
+    email_outbox = SqlAlchemyEmailOutbox(session_factory=session_factory, tables=tx_messaging_tables)
+    transactional_email = TransactionalEmailService(
+        repository=tx_messaging_repo,
+        outbox=email_outbox,
+        delivery=email_delivery_from_env(),
+        clock=_utc_now,
+        id_factory=_uuid,
+    )
+    registry.register(
+        messaging_tx.CAP_TRANSACTIONAL_SEND,
+        messaging_tx.CAP_VERSION,
+        messaging_tx.SendTransactionalEmail(service=transactional_email),
+    )
+    registry.register(
+        messaging_tx.CAP_TEMPLATE_LIST,
+        messaging_tx.CAP_VERSION,
+        messaging_tx.ListTemplates(repository=tx_messaging_repo),
+    )
+    registry.register(
+        messaging_tx.CAP_TEMPLATE_GET,
+        messaging_tx.CAP_VERSION,
+        messaging_tx.GetTemplate(repository=tx_messaging_repo),
+    )
+    registry.register(
+        messaging_tx.CAP_OUTBOX_LIST,
+        messaging_tx.CAP_VERSION,
+        messaging_tx.ListOutbox(outbox=email_outbox),
+    )
+    for action in messaging_tx.TRANSACTIONAL_CAPABILITIES:
+        policy.grant(PolicyGrant(action=action))
+    email_sender = MessagingEmailSender(service=transactional_email)
+
+    session_store, oidc_provider = _register_identity(
+        registry=registry,
+        policy=policy,
+        session_factory=session_factory,
+        email_sender=email_sender,
+        app_base_url=_app_base_url(),
+        tenant=_default_tenant(),
+    )
+
+    # Backend/management admin accounts are a SEPARATE, seeded class from self-registered learners.
+    # The is_admin flag gates the management console + admin-only endpoints. Seed from env
+    # (NORTHSTAR_ADMIN_EMAIL / NORTHSTAR_ADMIN_PASSWORD) idempotently on startup.
+    admin_accounts = SqlAlchemyLocalAccountStore(
+        session_factory=session_factory,
+        tables=build_identity_tables(MetaData()),
+        id_factory=_uuid,
+        clock=_utc_now,
+    )
+    _admin_email = os.environ.get("NORTHSTAR_ADMIN_EMAIL")
+    _admin_password = os.environ.get("NORTHSTAR_ADMIN_PASSWORD")
+    if _admin_email and _admin_password:
+        try:
+            admin_accounts.ensure_admin(
+                organization_id=_default_tenant(),
+                email=_admin_email.strip().lower(),
+                password_hash=ScryptPasswordHasher().hash(_admin_password),
+            )
+        except Exception:  # noqa: BLE001 - seeding must never block startup
+            pass
+
+    def _admin_lookup(subject_id: str) -> bool:
+        try:
+            return admin_accounts.is_admin(
+                organization_id=_default_tenant(), subject_id=subject_id
+            )
+        except Exception:  # noqa: BLE001 - fail closed (non-admin) on any lookup error
+            return False
     _register_knowledge(registry=registry, policy=policy, session_factory=session_factory)
+    _register_codelab(registry=registry, policy=policy, session_factory=session_factory)
     _register_annotation(registry=registry, policy=policy, session_factory=session_factory)
     _register_retrieval(registry=registry, policy=policy, session_factory=session_factory)
     _register_governance_studio(registry=registry, policy=policy, audit=audit)
@@ -2089,6 +2356,27 @@ def _compose(*, database_url: str | None = None, tracer: TracerPort | None = Non
         egress_guard=egress_guard,
         audit=audit,
     )
+    # Assistant: retrieval-grounded Q&A over a configured external chat model. Registered after the
+    # buses exist (it grounds via the authorized query bus); it never touches another module's tables.
+    assistant_settings = SqlAlchemyAssistantSettings(
+        session_factory=session_factory, tables=build_assistant_tables(MetaData())
+    )
+    assistant_store = assistant_default_store(
+        settings=assistant_settings, tenant=_default_tenant()
+    )
+    registry.register(
+        assistant.CAP_ASK,
+        assistant.CAP_VERSION,
+        assistant.Ask(
+            chat=OpenAICompatibleChatModel(),
+            retrieval=AssistantRetrievalGateway(query_bus=query_bus),
+            store=assistant_store,
+        ),
+    )
+    for action in assistant.ASSISTANT_CAPABILITIES:
+        policy.grant(PolicyGrant(action=action))
+    # The AI tutor is available to anonymous visitors too (grounded on public content).
+    policy.grant(PolicyGrant(action=assistant.CAP_ASK, actor_ids=frozenset({"anonymous"})))
     # Research reuses ai.answer through the authorized command bus, so it is registered after the
     # buses exist; it never touches another module's tables (LAW-13).
     _register_research(
@@ -2173,15 +2461,30 @@ def _compose(*, database_url: str | None = None, tracer: TracerPort | None = Non
         version=StaticVersionProbe(framework_version=_framework_version()),
         rate_limiter=rate_limiter,
     )
-    callback_url = os.environ.get("IDENTITY_CALLBACK_URL", "http://localhost:8000/auth/callback")
+    dev_idp = _dev_idp_enabled()
+    if dev_idp:
+        # Same-origin browser flow through the web dev proxy (/api -> API): relative URLs keep the
+        # ns_session cookie on the app's origin; secure=False so it is sent over local http.
+        callback_url = os.environ.get("IDENTITY_CALLBACK_URL", "/api/auth/callback")
+        post_login_url = os.environ.get("NORTHSTAR_POST_LOGIN_URL", "/")
+        identity_cookies = IdentityCookieConfig(secure=False, samesite="lax")
+    else:
+        callback_url = os.environ.get(
+            "IDENTITY_CALLBACK_URL", "http://localhost:8000/auth/callback"
+        )
+        post_login_url = os.environ.get("NORTHSTAR_POST_LOGIN_URL") or None
+        identity_cookies = IdentityCookieConfig()
     identity = IdentityApiDependencies(
         command_bus=command_bus,
         query_bus=query_bus,
         session_store=session_store,
         clock=_utc_now,
         callback_url=callback_url,
-        cookies=IdentityCookieConfig(),
+        cookies=identity_cookies,
+        post_login_url=post_login_url,
+        admin_lookup=_admin_lookup,
     )
+    mock_idp = MockIdpDependencies(provider=oidc_provider)
     organization = OrganizationApiDependencies(
         command_bus=command_bus,
         query_bus=query_bus,
@@ -2193,6 +2496,16 @@ def _compose(*, database_url: str | None = None, tracer: TracerPort | None = Non
         authenticate=_authenticator(session_store),
     )
     knowledge_deps = KnowledgeApiDependencies(
+        command_bus=command_bus,
+        query_bus=query_bus,
+        authenticate=_authenticator(session_store),
+        # Published content is publicly readable (anonymous viewers + crawlers) for SEO; writes still
+        # require a session. Disable with NORTHSTAR_PUBLIC_CONTENT=0.
+        public_tenant=(
+            _default_tenant() if os.environ.get("NORTHSTAR_PUBLIC_CONTENT", "1") != "0" else None
+        ),
+    )
+    codelab_deps = CodelabApiDependencies(
         command_bus=command_bus,
         query_bus=query_bus,
         authenticate=_authenticator(session_store),
@@ -2211,6 +2524,21 @@ def _compose(*, database_url: str | None = None, tracer: TracerPort | None = Non
         query_bus=query_bus,
         authenticate=_authenticator(session_store),
     )
+    assistant_deps = AssistantApiDependencies(
+        command_bus=command_bus,
+        authenticate=_authenticator(session_store),
+        store=assistant_store,
+        admin_lookup=_admin_lookup,
+        public_tenant=(
+            _default_tenant() if os.environ.get("NORTHSTAR_PUBLIC_CONTENT", "1") != "0" else None
+        ),
+    )
+    admin_deps = AdminApiDependencies(
+        authenticate=_authenticator(session_store),
+        admin_lookup=_admin_lookup,
+        session_factory=session_factory,
+        tenant=_default_tenant(),
+    )
     research_deps = ResearchApiDependencies(
         command_bus=command_bus,
         query_bus=query_bus,
@@ -2227,7 +2555,9 @@ def _compose(*, database_url: str | None = None, tracer: TracerPort | None = Non
     )
     messaging_deps = MessagingApiDependencies(
         command_bus=command_bus,
+        query_bus=query_bus,
         authenticate=_authenticator(session_store),
+        admin_lookup=_admin_lookup,
     )
     analytics_deps = AnalyticsApiDependencies(
         command_bus=command_bus,
@@ -2276,12 +2606,16 @@ def _compose(*, database_url: str | None = None, tracer: TracerPort | None = Non
     return _Composition(
         dependencies=dependencies,
         identity=identity,
+        mock_idp=mock_idp,
         organization=organization,
         governance_studio=governance_studio,
         knowledge=knowledge_deps,
+        codelab=codelab_deps,
         annotation=annotation_deps,
         retrieval=retrieval_deps,
         ai=ai_deps,
+        assistant=assistant_deps,
+        admin=admin_deps,
         research=research_deps,
         simulation=simulation_deps,
         extension=extension_deps,
@@ -2326,18 +2660,37 @@ def build_app(*, database_url: str | None = None) -> FastAPI:
     app = create_app(composition.dependencies)
     app.include_router(create_identity_router())
     bind_identity_dependencies(app.state, composition.identity)
+    if _dev_idp_enabled():
+        app.include_router(create_mock_idp_router())
+        bind_mock_idp_dependencies(app.state, composition.mock_idp)
     app.include_router(create_organization_router())
     bind_organization_dependencies(app.state, composition.organization)
     app.include_router(create_governance_studio_router())
     bind_governance_studio_dependencies(app.state, composition.governance_studio)
     app.include_router(create_knowledge_router())
     bind_knowledge_dependencies(app.state, composition.knowledge)
+    app.include_router(create_codelab_router())
+    bind_codelab_dependencies(app.state, composition.codelab)
+    # SEO: auto-generated sitemap.xml + robots.txt from published content.
+    app.include_router(create_admin_router())
+    bind_admin_dependencies(app.state, composition.admin)
+    app.include_router(create_seo_router())
+    bind_seo_dependencies(
+        app.state,
+        SeoDependencies(
+            query_bus=composition.dependencies.query_bus,
+            public_tenant=_default_tenant(),
+            site_url=os.environ.get("NORTHSTAR_SITE_URL", "http://localhost:5173"),
+        ),
+    )
     app.include_router(create_annotation_router())
     bind_annotation_dependencies(app.state, composition.annotation)
     app.include_router(create_retrieval_router())
     bind_retrieval_dependencies(app.state, composition.retrieval)
     app.include_router(create_ai_router())
     bind_ai_dependencies(app.state, composition.ai)
+    app.include_router(create_assistant_router())
+    bind_assistant_dependencies(app.state, composition.assistant)
     app.include_router(create_research_router())
     bind_research_dependencies(app.state, composition.research)
     app.include_router(create_simulation_router())

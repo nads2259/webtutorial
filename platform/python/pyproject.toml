@@ -7,7 +7,6 @@ name = "northstar"
 version = "0.3.0"
 description = "Northstar Knowledge, Learning, Research and Simulation Framework (platform)"
 requires-python = ">=3.13"
-readme = "../../README.md"
 # License is provisional (Apache-2.0) pending ADR-D06 / OQ-01.
 license = "Apache-2.0"
 # HTTP adapter/process stack (IMPL-006, spec-declared). Kernel imports none of these; they live

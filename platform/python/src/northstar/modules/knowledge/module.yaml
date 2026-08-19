@@ -25,6 +25,8 @@ capabilities:
   - knowledge.document.get
   - knowledge.revision.get
   - knowledge.taxonomy.assign
+  - knowledge.document.browse
+  - knowledge.taxonomy.terms
 produced_events:
   - northstar.knowledge.document-published.v1
 data_ownership:
